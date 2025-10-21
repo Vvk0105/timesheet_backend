@@ -29,9 +29,14 @@ class AttendanceLogoutView(APIView):
         return Response({"message": "Logout recorded successfully", "duration": attendance.duration})
 
 # Employee adds job/task
-class JobCreateView(generics.CreateAPIView):
+class JobCreateListView(generics.ListCreateAPIView):
     serializer_class = JobSerializer
     permission_classes = [permissions.IsAuthenticated]
+    queryset = Job.objects.all()
+
+    def get_queryset(self):
+        employee = self.request.user.employee
+        return Job.objects.filter(attendance__employee=employee)
 
     def perform_create(self, serializer):
         employee = self.request.user.employee
@@ -39,6 +44,15 @@ class JobCreateView(generics.CreateAPIView):
         if not attendance:
             raise ValueError("No active login session found")
         serializer.save(attendance=attendance)
+
+class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = JobSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = Job.objects.all()
+
+    def get_queryset(self):
+        employee = self.request.user.employee
+        return Job.objects.filter(attendance__employee=employee)
 
 # Admin view all attendance records
 class AdminAttendanceListView(generics.ListAPIView):
