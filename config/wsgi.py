@@ -21,3 +21,16 @@ try:
     print("✅ Migrations applied successfully on startup.")
 except Exception as e:
     print(f"⚠️ Migration error: {e}")
+
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+try:
+    if not User.objects.filter(username='admin').exists():
+        User.objects.create_superuser('admin', 'admin@example.com', 'admin123')
+        print("✅ Superuser 'admin' created successfully!")
+    else:
+        print("ℹ️ Superuser already exists, skipping creation.")
+except Exception as e:
+    print(f"⚠️ Superuser creation error: {e}")
