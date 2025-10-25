@@ -5,7 +5,6 @@ from django.utils import timezone
 from .models import Attendance, Job
 from .serializers import AttendanceSerializer, JobSerializer
 
-# Employee check-in (login with selected time)
 class AttendanceLoginView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -15,7 +14,6 @@ class AttendanceLoginView(APIView):
         attendance = Attendance.objects.create(employee=employee, selected_time=selected_time)
         return Response({"message": "Login recorded successfully", "attendance_id": attendance.id})
 
-# Employee check-out (logout)
 class AttendanceLogoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -28,7 +26,6 @@ class AttendanceLogoutView(APIView):
         attendance.save()
         return Response({"message": "Logout recorded successfully", "duration": attendance.duration})
 
-# Employee adds job/task
 class JobCreateListView(generics.ListCreateAPIView):
     serializer_class = JobSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -54,7 +51,6 @@ class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
         employee = self.request.user.employee
         return Job.objects.filter(attendance__employee=employee)
 
-# Admin view all attendance records
 class AdminAttendanceListView(generics.ListAPIView):
     serializer_class = AttendanceSerializer
     permission_classes = [permissions.IsAdminUser]
