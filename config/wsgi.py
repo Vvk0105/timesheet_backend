@@ -14,3 +14,10 @@ from django.core.wsgi import get_wsgi_application
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
 application = get_wsgi_application()
+
+try:
+    from django.core.management import call_command
+    call_command('migrate', interactive=False)
+    print("✅ Migrations applied successfully on startup.")
+except Exception as e:
+    print(f"⚠️ Migration error: {e}")
