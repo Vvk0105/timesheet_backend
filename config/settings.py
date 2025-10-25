@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-k3x-n-0y8(o6wro07ptcd7gqc)7lc%dj*c@jzoa+dur402^6_v
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['timesheet-backend-qd9j.onrender.com']
+ALLOWED_HOSTS = ['timesheet-backend-qd9j.onrender.com', "127.0.0.1", "127.0.0.1:8000"]
 
 CORS_ALLOWED_ORIGINS = ["http://localhost:5173"]
 
@@ -92,11 +92,21 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# Default: use SQLite for local development
 DATABASES = {
-    'default': dj_database_url.config(
-        default=os.environ.get('DATABASE_URL')
-    )
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
 }
+
+# If running on Render, switch to PostgreSQL
+if os.environ.get('RENDER'):
+    DATABASES['default'] = dj_database_url.config(
+        default=os.environ.get('DATABASE_URL'),
+        conn_max_age=600,
+        ssl_require=True
+    )
 
 
 # Password validation

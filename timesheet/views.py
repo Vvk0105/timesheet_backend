@@ -4,6 +4,10 @@ from rest_framework.views import APIView
 from django.utils import timezone
 from .models import Attendance, Job
 from .serializers import AttendanceSerializer, JobSerializer
+from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework import status
+
 
 class AttendanceLoginView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -66,3 +70,21 @@ class AdminAttendanceListView(generics.ListAPIView):
         if start and end:
             queryset = queryset.filter(login_time__date__range=[start, end])
         return queryset
+
+class AdminLoginView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+
+        user = authenticate(username=username, password=password)
+
+        if user is not None and user.is_superuser:
+            refresh = RefreshToken.for_user(user)
+
+            return Response({
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'username': user.username,
+                'is_admin': True
+            })
+        return Response({'error': 'Invalid credentials or not an admin'}, status=status.HTTP_401_UNAUTHORIZED)
