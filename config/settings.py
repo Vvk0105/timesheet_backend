@@ -29,7 +29,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['timesheet-backend-qd9j.onrender.com', "127.0.0.1", "127.0.0.1:8000"]
+ALLOWED_HOSTS = ['timesheet-backend-7h4n.onrender.com', "127.0.0.1", "127.0.0.1:8000"]
 
 if not DEBUG:
     CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS_PROD', '').split(',')
