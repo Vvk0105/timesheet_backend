@@ -1,5 +1,9 @@
-from django.urls import path
-from .views import AttendanceLoginView, AttendanceLogoutView, JobCreateListView, AdminAttendanceListView, JobDetailView, AdminLoginView
+from django.urls import path, include
+from .views import AttendanceLoginView, AttendanceLogoutView, JobCreateListView, AdminAttendanceListView, JobDetailView, AdminLoginView, AdminManageEmployee
+from rest_framework.routers import DefaultRouter
+
+router = DefaultRouter()
+router.register(r'employees', AdminManageEmployee, basename='employee')
 
 urlpatterns = [
     path('attendance/login/', AttendanceLoginView.as_view(), name='attendance-login'),
@@ -8,5 +12,5 @@ urlpatterns = [
     path('jobs/<int:pk>/', JobDetailView.as_view(), name='job-detail'),
     path('admin/attendance/', AdminAttendanceListView.as_view(), name='admin-attendance-list'),
     path('admin/login/', AdminLoginView.as_view(), name='admin-login'),
-
+    path('', include(router.urls)),
 ]

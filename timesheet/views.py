@@ -1,9 +1,9 @@
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
-from .models import Attendance, Job
-from .serializers import AttendanceSerializer, JobSerializer
+from .models import Attendance, Job, Employee
+from .serializers import AttendanceSerializer, JobSerializer, EmployeeSerializer
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import status
@@ -88,3 +88,8 @@ class AdminLoginView(APIView):
                 'is_admin': True
             })
         return Response({'error': 'Invalid credentials or not an admin'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+class AdminManageEmployee(viewsets.ModelViewSet):
+    queryset = Employee.objects.all()
+    serializer_class = EmployeeSerializer
+    permission_classes = [permissions.IsAdminUser]
