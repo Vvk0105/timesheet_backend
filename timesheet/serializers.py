@@ -27,8 +27,17 @@ class EmployeeSerializer(serializers.ModelSerializer):
         model = Employee
         fields = ["id", "user", "username", "designation", "department"]
 
+    def create(self, validated_data):
+        username = validated_data.pop("username")
+        password = validated_data.pop("password", "123456")
+
+        user = User.objects.create_user(username=username, password=password)
+        employee = Employee.objects.create(user=user, **validated_data)
+        return employee
+
     def update(self, instance, validated_data):
         username = validated_data.pop("username", None)
+        password = validated_data.pop("password", None)
 
         instance.designation = validated_data.get("designation", instance.designation)
         instance.department = validated_data.get("department", instance.department)
@@ -36,6 +45,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
         if username:
             instance.user.username = username
-            instance.user.save()
+        if password:
+            instance.user.set_password(password)
+        instance.user.save()
 
         return instance
