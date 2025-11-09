@@ -1,14 +1,48 @@
-from rest_framework import generics, permissions, viewsets
+from rest_framework import generics, permissions, viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
-from .models import Attendance, Job, Employee
-from .serializers import AttendanceSerializer, JobSerializer, EmployeeSerializer
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework import status
+from .models import Attendance, WorkEntry, Employee
+from .serializers import AttendanceSerializer, WorkEntrySerializer, EmployeeSerializer
+from rest_framework.permissions import AllowAny
+from rest_framework.authentication import BasicAuthentication
+
+# 🔹 Unified Login (admin + employee)
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+
+        user = authenticate(username=username, password=password)
+        if not user:
+            return Response({'error': 'Invalid username or password'}, status=401)
+
+        # Employee check
+        if hasattr(user, 'employee'):
+            employee = user.employee
+            if employee.is_suspended:
+                return Response({'error': 'Your account is suspended'}, status=403)
+            role = "employee"
+        elif user.is_superuser:
+            role = "admin"
+        else:
+            return Response({'error': 'Invalid role'}, status=403)
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'username': user.username,
+            'role': role
+        })
 
 
+# 🔹 Attendance
 class AttendanceLoginView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -17,6 +51,7 @@ class AttendanceLoginView(APIView):
         selected_time = request.data.get('selected_time')
         attendance = Attendance.objects.create(employee=employee, selected_time=selected_time)
         return Response({"message": "Login recorded successfully", "attendance_id": attendance.id})
+
 
 class AttendanceLogoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -30,66 +65,52 @@ class AttendanceLogoutView(APIView):
         attendance.save()
         return Response({"message": "Logout recorded successfully", "duration": attendance.duration})
 
-class JobCreateListView(generics.ListCreateAPIView):
-    serializer_class = JobSerializer
+
+# 🔹 Work Entries (Employee)
+class WorkEntryListCreateView(generics.ListCreateAPIView):
+    serializer_class = WorkEntrySerializer
     permission_classes = [permissions.IsAuthenticated]
-    queryset = Job.objects.all()
 
     def get_queryset(self):
-        employee = self.request.user.employee
-        return Job.objects.filter(attendance__employee=employee)
+        user = self.request.user
+        if user.is_superuser:
+            return WorkEntry.objects.all()
+        return WorkEntry.objects.filter(employee__user=user)
 
     def perform_create(self, serializer):
         employee = self.request.user.employee
-        attendance = Attendance.objects.filter(employee=employee, logout_time__isnull=True).last()
-        if not attendance:
-            raise ValueError("No active login session found")
-        serializer.save(attendance=attendance)
+        serializer.save(employee=employee)
 
-class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
-    serializer_class = JobSerializer
+
+# 🔹 Work Entry Detail (update/delete)
+class WorkEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = WorkEntrySerializer
     permission_classes = [permissions.IsAuthenticated]
-    queryset = Job.objects.all()
 
     def get_queryset(self):
-        employee = self.request.user.employee
-        return Job.objects.filter(attendance__employee=employee)
+        user = self.request.user
+        if user.is_superuser:
+            return WorkEntry.objects.all()
+        return WorkEntry.objects.filter(employee__user=user)
 
-class AdminAttendanceListView(generics.ListAPIView):
-    serializer_class = AttendanceSerializer
-    permission_classes = [permissions.IsAdminUser]
 
-    def get_queryset(self):
-        queryset = Attendance.objects.all().select_related('employee')
-        employee_id = self.request.query_params.get('employee')
-        start = self.request.query_params.get('start_date')
-        end = self.request.query_params.get('end_date')
-
-        if employee_id:
-            queryset = queryset.filter(employee__id=employee_id)
-        if start and end:
-            queryset = queryset.filter(login_time__date__range=[start, end])
-        return queryset
-
-class AdminLoginView(APIView):
-    def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-
-        user = authenticate(username=username, password=password)
-
-        if user is not None and user.is_superuser:
-            refresh = RefreshToken.for_user(user)
-
-            return Response({
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-                'username': user.username,
-                'is_admin': True
-            })
-        return Response({'error': 'Invalid credentials or not an admin'}, status=status.HTTP_401_UNAUTHORIZED)
-    
+# 🔹 Admin Manage Employees
 class AdminManageEmployee(viewsets.ModelViewSet):
     queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer
     permission_classes = [permissions.IsAdminUser]
+
+
+# 🔹 Suspend/Reactivate Employee
+class SuspendEmployeeView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, pk):
+        try:
+            employee = Employee.objects.get(pk=pk)
+            employee.is_suspended = not employee.is_suspended
+            employee.save()
+            status_text = "suspended" if employee.is_suspended else "reactivated"
+            return Response({"message": f"Employee {status_text} successfully"})
+        except Employee.DoesNotExist:
+            return Response({"error": "Employee not found"}, status=404)
