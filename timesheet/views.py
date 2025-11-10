@@ -8,6 +8,8 @@ from .models import Attendance, Job, Employee, LeaveRecord, LeaveBalance
 from .serializers import AttendanceSerializer, JobSerializer, EmployeeSerializer, LeaveRecordSerializer,LeaveBalanceSerializer
 from rest_framework.permissions import AllowAny
 from rest_framework.authentication import BasicAuthentication
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 # 🔹 Unified Login (admin + employee)
 class LoginView(APIView):
@@ -211,3 +213,66 @@ class AdminLeaveBalanceViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(balance)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class EmployeeViewSet(AdminManageEmployee):  # reuse admin employee view
+    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAdminUser])
+    def attendances(self, request, pk=None):
+        """Fetch all attendance records for a specific employee"""
+        employee = self.get_object()
+        attendances = Attendance.objects.filter(employee=employee).order_by("-login_time")
+        serializer = AttendanceSerializer(attendances, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAdminUser])
+    def jobs(self, request, pk=None):
+        """Fetch all jobs done by a specific employee"""
+        employee = self.get_object()
+        jobs = Job.objects.filter(attendance__employee=employee).select_related("attendance").order_by("-created_at")
+        serializer = JobSerializer(jobs, many=True)
+        return Response(serializer.data)
+    
+class EmployeeViewSet(AdminManageEmployee):  # reuse admin employee view
+    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAdminUser])
+    def attendances(self, request, pk=None):
+        """Fetch all attendance records for a specific employee"""
+        employee = self.get_object()
+        attendances = Attendance.objects.filter(employee=employee).order_by("-login_time")
+        serializer = AttendanceSerializer(attendances, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAdminUser])
+    def jobs(self, request, pk=None):
+        """Fetch all jobs done by a specific employee"""
+        employee = self.get_object()
+        jobs = Job.objects.filter(attendance__employee=employee).select_related("attendance").order_by("-created_at")
+        serializer = JobSerializer(jobs, many=True)
+        return Response(serializer.data)
+    
+class AdminManageEmployee(viewsets.ModelViewSet):
+    queryset = Employee.objects.all()
+    serializer_class = EmployeeSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    # 🔹 Custom route: /api/employees/<id>/attendances/
+    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAdminUser])
+    def attendances(self, request, pk=None):
+        """Fetch all attendance records for a specific employee"""
+        try:
+            employee = self.get_object()
+            attendances = Attendance.objects.filter(employee=employee).order_by("-login_time")
+            serializer = AttendanceSerializer(attendances, many=True)
+            return Response(serializer.data)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employee not found"}, status=404)
+
+    # 🔹 Custom route: /api/employees/<id>/jobs/
+    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAdminUser])
+    def jobs(self, request, pk=None):
+        """Fetch all jobs done by a specific employee"""
+        try:
+            employee = self.get_object()
+            jobs = Job.objects.filter(attendance__employee=employee).select_related("attendance").order_by("-created_at")
+            serializer = JobSerializer(jobs, many=True)
+            return Response(serializer.data)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employee not found"}, status=404)
