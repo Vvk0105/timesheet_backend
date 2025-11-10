@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Employee, Attendance, Job
+from .models import Employee, Attendance, Job, LeaveRecord, LeaveBalance
 
 
 # 🔹 User serializer (no major change)
@@ -56,8 +56,52 @@ class AttendanceSerializer(serializers.ModelSerializer):
 
 
 # 🔹 Work Entry Serializer
-class WorkEntrySerializer(serializers.ModelSerializer):
+class AttendanceSummarySerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.user.username', read_only=True)
+    duration = serializers.DurationField(read_only=True)
+    login_time = serializers.DateTimeField(read_only=True)
+    logout_time = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = Attendance
+        fields = ['id', 'employee_name', 'login_time', 'logout_time', 'duration']
+
+
+class JobSerializer(serializers.ModelSerializer):
+    attendance = AttendanceSummarySerializer(read_only=True)
+
     class Meta:
         model = Job
-        fields = '__all__'
-        read_only_fields = ['employee', 'created_at', 'date']
+        fields = [
+            'id',
+            'attendance',
+            'status',
+            'task_title',
+            'description',
+            'start_time',
+            'end_time',
+            'job_no',
+            'ship_name',
+            'location',
+            'leave_type',
+            'leave_reason',
+            'created_at',
+        ]
+
+class LeaveRecordSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.user.username', read_only=True)
+
+    class Meta:
+        model = LeaveRecord
+        fields = ['id', 'employee', 'employee_name', 'leave_type', 'reason', 'count', 'date', 'created_at']
+
+class LeaveBalanceSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source="employee.user.username", read_only=True)
+    remaining = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LeaveBalance
+        fields = ["id", "employee", "employee_name", "leave_type", "total_allocated", "used", "remaining"]
+
+    def get_remaining(self, obj):
+        return obj.remaining()

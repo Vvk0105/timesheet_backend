@@ -29,6 +29,21 @@ class Attendance(models.Model):
     logout_time = models.DateTimeField(null=True, blank=True)
     duration = models.DurationField(null=True, blank=True)
 
+    def save(self, *args, **kwargs):
+        if self.logout_time and self.login_time:
+            self.duration = self.logout_time - self.login_time
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        date_str = str(self.login_time.date()) if self.login_time else 'No date'
+        return f"{self.employee.user.username} - {date_str}"
+    
+    @property
+    def computed_duration(self):
+        if self.logout_time and self.login_time:
+            return self.logout_time - self.login_time
+        return None
+
 
 class Job(models.Model):
     STATUS_CHOICES = [
@@ -63,4 +78,46 @@ class Job(models.Model):
 
     def __str__(self):
         return f"{self.attendance.employee.user.username} - {self.status}"
+
+class LeaveRecord(models.Model):
+    LEAVE_TYPES = [
+        ('sick', 'Sick Leave'),
+        ('personal', 'Personal Leave'),
+        ('annual', 'Annual Leave'),
+        ('compensatory', 'Compensatory Leave'),
+    ]
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_records')
+    leave_type = models.CharField(max_length=50, choices=LEAVE_TYPES)
+    reason = models.TextField(blank=True, null=True)
+    count = models.PositiveIntegerField(default=1, help_text="Number of leave days")
+    date = models.DateField(default=timezone.now)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.employee.user.username} - {self.leave_type} ({self.count} days)"
+
+class LeaveBalance(models.Model):
+    LEAVE_TYPES = [
+        ('sick', 'Sick Leave'),
+        ('personal', 'Personal Leave'),
+        ('annual', 'Annual Leave'),
+        ('compensatory', 'Compensatory Leave'),
+    ]
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_balances')
+    leave_type = models.CharField(max_length=50, choices=LEAVE_TYPES)
+    total_allocated = models.PositiveIntegerField(default=0)
+    used = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ('employee', 'leave_type')
+        ordering = ['employee__user__username', 'leave_type']
+
+    def remaining(self):
+        return self.total_allocated - self.used
+
+    def __str__(self):
+        return f"{self.employee.user.username} - {self.leave_type}: {self.remaining()} left"
 
