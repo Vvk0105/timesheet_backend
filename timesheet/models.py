@@ -74,6 +74,12 @@ class Job(models.Model):
     leave_type = models.CharField(max_length=50, choices=LEAVE_TYPES, blank=True, null=True)
     leave_reason = models.TextField(blank=True, null=True)
 
+    # 🔹 Worked On (for Type A employees)
+    holiday_worked = models.BooleanField(default=False)
+    off_station = models.BooleanField(default=False)
+    local_site = models.BooleanField(default=False)
+    driv = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

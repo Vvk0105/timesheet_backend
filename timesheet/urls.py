@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     AttendanceLoginView, AttendanceLogoutView, JobListCreateView,
-    JobDetailView, AdminManageEmployee, LoginView, SuspendEmployeeView,AdminLeaveViewSet, AdminLeaveBalanceViewSet
+    JobDetailView, AdminManageEmployee, LoginView, SuspendEmployeeView,AdminLeaveViewSet, AdminLeaveBalanceViewSet,EmployeeTimeSheetView
 )
 
 router = DefaultRouter()
@@ -19,6 +19,8 @@ urlpatterns = [
     path('workentries/<int:pk>/', JobDetailView.as_view(), name='workentry-detail'),
 
     path('employees/<int:pk>/suspend/', SuspendEmployeeView.as_view(), name='suspend-employee'),
+
+    path('timesheet/<int:employee_id>/', EmployeeTimeSheetView.as_view(), name='employee-timesheet'),
 
     path('', include(router.urls)),
 ]

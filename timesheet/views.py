@@ -10,6 +10,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.authentication import BasicAuthentication
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.db.models import Prefetch
+from collections import defaultdict
 
 # 🔹 Unified Login (admin + employee)
 class LoginView(APIView):
@@ -276,3 +278,34 @@ class AdminManageEmployee(viewsets.ModelViewSet):
             return Response(serializer.data)
         except Employee.DoesNotExist:
             return Response({"error": "Employee not found"}, status=404)
+
+class EmployeeTimeSheetView(APIView):
+     def get(self, request, employee_id):
+        try:
+            employee = Employee.objects.get(pk=employee_id)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employee not found"}, status=404)
+
+        attendances = Attendance.objects.filter(employee=employee).prefetch_related(
+            Prefetch('jobs', queryset=Job.objects.all())
+        ).order_by('-login_time')
+
+        result = []
+        for attendance in attendances:
+            jobs = attendance.jobs.all()
+            for job in jobs:
+                result.append({
+                    "date": attendance.login_time.date(),
+                    "day": attendance.login_time.strftime("%A"),
+                    "job_no": job.job_no if employee.category == 'A' else None,
+                    "job_details": job.description,  # 🔹 only remarks/description
+                    "worked_on": {
+                        "holiday_worked": job.holiday_worked,
+                        "off_station": job.off_station,
+                        "local_site": job.local_site,
+                        "driv": job.driv
+                    },
+                    "duration": str(attendance.duration) if attendance.duration else None
+                })
+
+        return Response(result)

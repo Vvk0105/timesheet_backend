@@ -69,24 +69,23 @@ class AttendanceSummarySerializer(serializers.ModelSerializer):
 
 class JobSerializer(serializers.ModelSerializer):
     attendance = AttendanceSummarySerializer(read_only=True)
+    employee_name = serializers.CharField(source='attendance.employee.user.username', read_only=True)
+    date = serializers.DateField(source='attendance.login_time', read_only=True)
+    day = serializers.SerializerMethodField()
 
     class Meta:
         model = Job
         fields = [
-            'id',
-            'attendance',
-            'status',
-            'task_title',
-            'description',
-            'start_time',
-            'end_time',
-            'job_no',
-            'ship_name',
-            'location',
-            'leave_type',
-            'leave_reason',
-            'created_at',
+            'id', 'employee_name', 'attendance', 'status', 'task_title', 'description',
+            'start_time', 'end_time', 'job_no', 'ship_name', 'location',
+            'holiday_worked', 'off_station', 'local_site', 'driv',
+            'leave_type', 'leave_reason', 'date', 'day', 'created_at'
         ]
+
+    def get_day(self, obj):
+        if obj.attendance and obj.attendance.login_time:
+            return obj.attendance.login_time.strftime("%A")
+        return ""
 
 class LeaveRecordSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='employee.user.username', read_only=True)
