@@ -30,8 +30,16 @@ class Attendance(models.Model):
     duration = models.DurationField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
+        # Calculate duration safely with timezone-aware datetimes
         if self.logout_time and self.login_time:
-            self.duration = self.logout_time - self.login_time
+            login = self.login_time
+            logout = self.logout_time
+            if timezone.is_naive(login):
+                login = timezone.make_aware(login)
+            if timezone.is_naive(logout):
+                logout = timezone.make_aware(logout)
+            self.duration = logout - login
+
         super().save(*args, **kwargs)
 
     def __str__(self):

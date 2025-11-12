@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from django.db.models import Prefetch
 from collections import defaultdict
 from rest_framework.permissions import IsAuthenticated
+from datetime import date
 
 # 🔹 Unified Login (admin + employee)
 class LoginView(APIView):
@@ -59,8 +60,42 @@ class AttendanceLoginView(APIView):
     def post(self, request):
         employee = request.user.employee
         selected_time = request.data.get('selected_time')
+        today = date.today()
+
+        # 🔒 Check if user already marked leave today
+        if Job.objects.filter(
+            attendance__employee=employee,
+            created_at__date=today,
+            status='leave'
+        ).exists():
+            return Response(
+                {"error": "You have already marked leave for today. Attendance not allowed."},
+                status=400
+            )
+
+        # 🔍 Check if attendance exists for today
+        existing = Attendance.objects.filter(employee=employee, login_time__date=today).last()
+
+        if existing and existing.logout_time is None:
+            # ✅ Resume ongoing session
+            return Response({
+                "message": "Resuming your existing attendance session.",
+                "attendance_id": existing.id,
+                "selected_time": existing.selected_time
+            })
+
+        if existing and existing.logout_time:
+            return Response(
+                {"error": "You have already completed attendance today."},
+                status=400
+            )
+
+        # ✅ Create new attendance
         attendance = Attendance.objects.create(employee=employee, selected_time=selected_time)
-        return Response({"message": "Login recorded successfully", "attendance_id": attendance.id})
+        return Response({
+            "message": "Login recorded successfully",
+            "attendance_id": attendance.id
+        })
 
 
 class AttendanceLogoutView(APIView):
@@ -68,22 +103,52 @@ class AttendanceLogoutView(APIView):
 
     def post(self, request):
         employee = request.user.employee
-        attendance = Attendance.objects.filter(employee=employee, logout_time__isnull=True).last()
+
+        attendance = Attendance.objects.filter(
+            employee=employee, 
+            logout_time__isnull=True
+        ).last()
+
         if not attendance:
             return Response({"error": "No active session found"}, status=400)
 
         attendance.logout_time = timezone.now()
-        attendance.save()  # this triggers duration calculation
-
-        # ✅ Re-fetch the updated record to include calculated duration
-        attendance.refresh_from_db()
+        attendance.save()  # Triggers duration calculation
+        attendance.refresh_from_db()  # ✅ Ensure updated duration is loaded
 
         return Response({
             "message": "Logout recorded successfully",
-            "duration": str(attendance.duration)
+            "logout_time": attendance.logout_time,
+            "duration": str(attendance.duration) if attendance.duration else "0:00:00"
         })
 
 
+class AttendanceStatusView(APIView):
+    """
+    Check if the employee already has an active attendance session today.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        employee = request.user.employee
+        today = date.today()
+
+        # Find today's attendance with no logout
+        attendance = Attendance.objects.filter(
+            employee=employee,
+            login_time__date=today,
+            logout_time__isnull=True
+        ).last()
+
+        if attendance:
+            return Response({
+                "active_attendance": True,
+                "attendance_id": attendance.id,
+                "login_time": attendance.login_time,
+                "selected_time": attendance.selected_time,
+            })
+
+        return Response({"active_attendance": False})
 
 # 🔹 Work Entries (Employee)
 class JobListCreateView(generics.ListCreateAPIView):
@@ -116,13 +181,23 @@ class JobListCreateView(generics.ListCreateAPIView):
         data = self.request.data
         status_value = data.get("status")
         leave_type = data.get("leave_type")
+        today = date.today()
 
-        attendance = Attendance.objects.filter(employee=employee, logout_time__isnull=True).last()
-        if not attendance:
-            raise ValueError("No active login session found")
+        # 🔹 If the user tries to create a LEAVE entry
+        if status_value == "leave":
+            # Already logged in today?
+            if Attendance.objects.filter(employee=employee, login_time__date=today).exists():
+                raise ValueError("You are already marked as On Duty today. Leave not allowed.")
+            
+            # Already taken leave today?
+            if Job.objects.filter(
+                attendance__employee=employee,
+                created_at__date=today,
+                status="leave"
+            ).exists():
+                raise ValueError("You have already marked leave for today.")
 
-        # ✅ Deduct leave if type = leave
-        if status_value == 'leave':
+            # Deduct leave balance if valid
             try:
                 balance = LeaveBalance.objects.get(employee=employee, leave_type=leave_type)
             except LeaveBalance.DoesNotExist:
@@ -134,6 +209,17 @@ class JobListCreateView(generics.ListCreateAPIView):
             balance.used += 1
             balance.save()
 
+            # ✅ Create a dummy attendance for internal linking consistency
+            attendance = Attendance.objects.create(employee=employee, selected_time=None)
+            serializer.save(attendance=attendance)
+            return
+
+        # 🔹 If On Duty, check if attendance session exists
+        attendance = Attendance.objects.filter(employee=employee, logout_time__isnull=True).last()
+        if not attendance:
+            raise ValueError("No active login session found. Please log in first.")
+
+        # ✅ Create job entry linked to the current attendance
         serializer.save(attendance=attendance)
 
 
