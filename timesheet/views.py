@@ -14,6 +14,7 @@ from django.db.models import Prefetch
 from collections import defaultdict
 from rest_framework.permissions import IsAuthenticated
 from datetime import date
+from rest_framework import serializers
 
 # 🔹 Unified Login (admin + employee)
 class LoginView(APIView):
@@ -181,45 +182,47 @@ class JobListCreateView(generics.ListCreateAPIView):
         data = self.request.data
         status_value = data.get("status")
         leave_type = data.get("leave_type")
-        today = date.today()
 
-        # 🔹 If the user tries to create a LEAVE entry
-        if status_value == "leave":
-            # Already logged in today?
-            if Attendance.objects.filter(employee=employee, login_time__date=today).exists():
-                raise ValueError("You are already marked as On Duty today. Leave not allowed.")
-            
-            # Already taken leave today?
-            if Job.objects.filter(
-                attendance__employee=employee,
-                created_at__date=today,
-                status="leave"
-            ).exists():
-                raise ValueError("You have already marked leave for today.")
+        # ✅ Find the employee's current attendance
+        attendance = Attendance.objects.filter(employee=employee, logout_time__isnull=True).last()
+        if not attendance:
+            return Response({"error": "No active login session found."}, status=400)
 
-            # Deduct leave balance if valid
+        # ✅ Check if the employee already has on-duty work today
+        today = timezone.now().date()
+        if status_value == 'leave' and Job.objects.filter(
+            attendance__employee=employee,
+            attendance__login_time__date=today,
+            status='on_duty'
+        ).exists():
+            raise serializers.ValidationError(
+                {"error": "You are already marked as On Duty today. Leave not allowed."}
+            )
+
+        # ✅ Check if the employee already has leave for today
+        if status_value == 'on_duty' and Job.objects.filter(
+            attendance__employee=employee,
+            attendance__login_time__date=today,
+            status='leave'
+        ).exists():
+            raise serializers.ValidationError(
+                {"error": "You have already marked Leave today. On-duty not allowed."}
+            )
+
+        # ✅ Deduct leave if type = leave
+        if status_value == 'leave':
             try:
                 balance = LeaveBalance.objects.get(employee=employee, leave_type=leave_type)
             except LeaveBalance.DoesNotExist:
-                raise ValueError(f"No leave balance found for {leave_type}")
+                raise serializers.ValidationError({"error": f"No leave balance found for {leave_type}"})
 
             if balance.remaining() <= 0:
-                raise ValueError(f"No {leave_type} leaves remaining!")
+                raise serializers.ValidationError({"error": f"No {leave_type} leaves remaining!"})
 
             balance.used += 1
             balance.save()
 
-            # ✅ Create a dummy attendance for internal linking consistency
-            attendance = Attendance.objects.create(employee=employee, selected_time=None)
-            serializer.save(attendance=attendance)
-            return
-
-        # 🔹 If On Duty, check if attendance session exists
-        attendance = Attendance.objects.filter(employee=employee, logout_time__isnull=True).last()
-        if not attendance:
-            raise ValueError("No active login session found. Please log in first.")
-
-        # ✅ Create job entry linked to the current attendance
+        # ✅ Save job entry
         serializer.save(attendance=attendance)
 
 
