@@ -70,7 +70,7 @@ class AttendanceSummarySerializer(serializers.ModelSerializer):
 class JobSerializer(serializers.ModelSerializer):
     attendance = AttendanceSummarySerializer(read_only=True)
     employee_name = serializers.CharField(source='attendance.employee.user.username', read_only=True)
-    date = serializers.DateField(source='attendance.login_time', read_only=True)
+    date = serializers.DateTimeField(source='attendance.login_time', read_only=True)
     day = serializers.SerializerMethodField()
 
     class Meta:

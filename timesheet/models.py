@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
-
+from datetime import date
 
 class Employee(models.Model):
     CATEGORY_CHOICES = [
@@ -97,7 +97,7 @@ class LeaveRecord(models.Model):
     leave_type = models.CharField(max_length=50, choices=LEAVE_TYPES)
     reason = models.TextField(blank=True, null=True)
     count = models.PositiveIntegerField(default=1, help_text="Number of leave days")
-    date = models.DateField(default=timezone.now)
+    date = models.DateField(default=date.today)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
