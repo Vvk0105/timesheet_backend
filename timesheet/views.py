@@ -589,3 +589,45 @@ def monthly_timesheet(request):
         "days_in_month": days_in_month,
         "data": output,
     })
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def monthly_leave_report(request):
+    """
+    Returns leave details for each employee for a specific month.
+    Example: /api/leaves/report/?month=2025-11
+    """
+    month = request.GET.get("month")
+    if not month:
+        return Response({"error": "month is required (YYYY-MM)"}, status=400)
+
+    year, month_num = map(int, month.split("-"))
+
+    leaves = LeaveRecord.objects.filter(
+        date__year=year,
+        date__month=month_num
+    ).select_related("employee__user")
+
+    data = {}
+
+    for leave in leaves:
+        emp = leave.employee.user.username
+
+        if emp not in data:
+            data[emp] = {
+                "employee": emp,
+                "employee_id": leave.employee.id,
+                "records": [],
+                "total": 0
+            }
+
+        data[emp]["records"].append({
+            "date": leave.date,
+            "type": leave.leave_type,
+            "reason": leave.reason,
+            "count": leave.count,
+        })
+
+        data[emp]["total"] += leave.count
+
+    return Response(list(data.values()))
