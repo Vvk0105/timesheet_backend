@@ -68,7 +68,6 @@ class Job(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='on_duty')
 
     # On-Duty Fields
-    task_title = models.CharField(max_length=200, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
     start_time = models.TimeField(blank=True, null=True)
     end_time = models.TimeField(blank=True, null=True)

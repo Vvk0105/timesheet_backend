@@ -76,7 +76,7 @@ class JobSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = [
-            'id', 'employee_name', 'attendance', 'status', 'task_title', 'description',
+            'id', 'employee_name', 'attendance', 'status', 'description',
             'start_time', 'end_time', 'job_no', 'ship_name', 'location',
             'holiday_worked', 'off_station', 'local_site', 'driv',
             'leave_type', 'leave_reason', 'date', 'day', 'created_at'

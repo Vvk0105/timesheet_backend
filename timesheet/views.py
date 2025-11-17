@@ -449,43 +449,46 @@ def employee_profile(request):
 @permission_classes([IsAuthenticated])
 def daywise_report(request):
     """
-    Returns work done by a specific employee on a specific day.
-    If employee_id not provided → return error.
+    Returns work entries for a specific date.
+    Optional: filter by employee.
     """
     report_date = request.GET.get("date")
-    employee_id = request.GET.get("employee_id")
+    employee_id = request.GET.get("employee")
 
     if not report_date:
-        return Response({"error": "date parameter is required"}, status=400)
+        return Response({"error": "date parameter is required (YYYY-MM-DD)"}, status=400)
 
-    if not employee_id:
-        return Response({"error": "employee_id parameter is required"}, status=400)
+    filters = {"created_at__date": report_date}
 
-    jobs = Job.objects.filter(
-        created_at__date=report_date,
-        attendance__employee_id=employee_id
-    ).select_related("attendance__employee__user")
+    # Optional filter: employee
+    if employee_id:
+        filters["attendance__employee_id"] = employee_id
+
+    jobs = Job.objects.filter(**filters).select_related(
+        "attendance__employee__user"
+    )
 
     data = []
     for job in jobs:
+        worked_on_list = []
+        if job.holiday_worked:
+            worked_on_list.append("Holiday Worked")
+        if job.off_station:
+            worked_on_list.append("Off Station")
+        if job.local_site:
+            worked_on_list.append("Local Site")
+        if job.driv:
+            worked_on_list.append("Driving")
+
         data.append({
             "employee": job.attendance.employee.user.username,
             "status": job.status,
             "description": job.description or "-",
             "job_no": job.job_no or "-",
             "location": job.location or "-",
-            "worked_on": ", ".join(
-                [
-                    name for name, val in {
-                        "Holiday Worked": job.holiday_worked,
-                        "Off Station": job.off_station,
-                        "Local Site": job.local_site,
-                        "Driving": job.driv,
-                    }.items() if val
-                ]
-            ) or "-",
-            "start_time": job.start_time,
-            "end_time": job.end_time,
+            "worked_on": ", ".join(worked_on_list) or "-",
+            "start_time": job.start_time or "-",
+            "end_time": job.end_time or "-",
         })
 
     return Response(data)
