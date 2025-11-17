@@ -592,42 +592,46 @@ def monthly_timesheet(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def monthly_leave_report(request):
+def monthly_leave_report_employee(request):
     """
-    Returns leave details for each employee for a specific month.
-    Example: /api/leaves/report/?month=2025-11
+    Returns leave report for one employee for a selected month.
+    Example: /api/leaves/report/employee/?employee=4&month=2025-11
     """
+    emp_id = request.GET.get("employee")
     month = request.GET.get("month")
-    if not month:
-        return Response({"error": "month is required (YYYY-MM)"}, status=400)
+
+    if not emp_id or not month:
+        return Response({"error": "employee and month (YYYY-MM) are required"}, status=400)
+
+    try:
+        employee = Employee.objects.get(id=emp_id)
+    except Employee.DoesNotExist:
+        return Response({"error": "Employee not found"}, status=404)
 
     year, month_num = map(int, month.split("-"))
 
     leaves = LeaveRecord.objects.filter(
+        employee=employee,
         date__year=year,
         date__month=month_num
-    ).select_related("employee__user")
+    ).order_by("date")
 
-    data = {}
+    records = []
+    total = 0
 
     for leave in leaves:
-        emp = leave.employee.user.username
-
-        if emp not in data:
-            data[emp] = {
-                "employee": emp,
-                "employee_id": leave.employee.id,
-                "records": [],
-                "total": 0
-            }
-
-        data[emp]["records"].append({
+        records.append({
             "date": leave.date,
             "type": leave.leave_type,
             "reason": leave.reason,
-            "count": leave.count,
+            "count": leave.count
         })
+        total += leave.count
 
-        data[emp]["total"] += leave.count
-
-    return Response(list(data.values()))
+    return Response({
+        "employee": employee.user.username,
+        "employee_id": employee.id,
+        "month": month,
+        "total_leaves": total,
+        "records": records
+    })
