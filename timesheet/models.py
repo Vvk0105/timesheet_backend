@@ -14,8 +14,6 @@ class Employee(models.Model):
     emp_no = models.CharField(max_length=50, unique=True, default='0')
     mobile = models.CharField(max_length=15, null=True, blank=True)  
     category = models.CharField(max_length=1, choices=CATEGORY_CHOICES, null=True, blank=True)
-    designation = models.CharField(max_length=100, blank=True, null=True) 
-    department = models.CharField(max_length=100, blank=True, null=True)  
     is_suspended = models.BooleanField(default=False)
 
     def __str__(self):

@@ -442,7 +442,50 @@ def employee_profile(request):
         "id": emp.id,
         "username": user.username,
         "category": emp.category,
-        "designation": emp.designation,
-        "department": emp.department,
         "emp_no": emp.emp_no,
     })
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def daywise_report(request):
+    """
+    Returns work done by a specific employee on a specific day.
+    If employee_id not provided → return error.
+    """
+    report_date = request.GET.get("date")
+    employee_id = request.GET.get("employee_id")
+
+    if not report_date:
+        return Response({"error": "date parameter is required"}, status=400)
+
+    if not employee_id:
+        return Response({"error": "employee_id parameter is required"}, status=400)
+
+    jobs = Job.objects.filter(
+        created_at__date=report_date,
+        attendance__employee_id=employee_id
+    ).select_related("attendance__employee__user")
+
+    data = []
+    for job in jobs:
+        data.append({
+            "employee": job.attendance.employee.user.username,
+            "status": job.status,
+            "description": job.description or "-",
+            "job_no": job.job_no or "-",
+            "location": job.location or "-",
+            "worked_on": ", ".join(
+                [
+                    name for name, val in {
+                        "Holiday Worked": job.holiday_worked,
+                        "Off Station": job.off_station,
+                        "Local Site": job.local_site,
+                        "Driving": job.driv,
+                    }.items() if val
+                ]
+            ) or "-",
+            "start_time": job.start_time,
+            "end_time": job.end_time,
+        })
+
+    return Response(data)

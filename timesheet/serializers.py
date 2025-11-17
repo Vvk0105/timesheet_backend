@@ -20,7 +20,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         model = Employee
         fields = [
             "id", "user", "username", "password", "emp_no",
-            "mobile", "category", "designation", "department", "is_suspended"
+            "mobile", "category", "is_suspended"
         ]
 
     def create(self, validated_data):
