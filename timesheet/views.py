@@ -15,6 +15,7 @@ from collections import defaultdict
 from rest_framework.permissions import IsAuthenticated
 from datetime import date
 from rest_framework import serializers
+import calendar
 
 # 🔹 Unified Login (admin + employee)
 class LoginView(APIView):
@@ -378,7 +379,19 @@ class EmployeeTimeSheetView(APIView):
         except Employee.DoesNotExist:
             return Response({"error": "Employee not found"}, status=404)
 
-        attendances = Attendance.objects.filter(employee=employee).prefetch_related(
+        # Optional filters
+        start_date = request.GET.get("start")
+        end_date = request.GET.get("end")
+
+        attendances = Attendance.objects.filter(employee=employee)
+
+        # Apply date range if given
+        if start_date and end_date:
+            attendances = attendances.filter(
+                login_time__date__range=[start_date, end_date]
+            )
+
+        attendances = attendances.prefetch_related(
             Prefetch('jobs', queryset=Job.objects.all())
         ).order_by('-login_time')
 
@@ -424,7 +437,6 @@ class EmployeeTimeSheetView(APIView):
                 "duration": data["duration"] or "-"
             })
 
-        # Sort by latest date first
         result.sort(key=lambda x: x["date"], reverse=True)
 
         return Response(result)
@@ -492,3 +504,88 @@ def daywise_report(request):
         })
 
     return Response(data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def monthly_timesheet(request):
+    employee_id = request.GET.get("employee")
+    month_str = request.GET.get("month")  # format: YYYY-MM
+
+    if not employee_id or not month_str:
+        return Response({"error": "employee and month (YYYY-MM) are required"}, status=400)
+
+    try:
+        employee = Employee.objects.get(id=employee_id)
+    except Employee.DoesNotExist:
+        return Response({"error": "Employee not found"}, status=404)
+
+    # Extract year + month
+    year, month = map(int, month_str.split("-"))
+
+    # 🔥 FIX: Find number of days in month
+    days_in_month = calendar.monthrange(year, month)[1]  # e.g. 30 for November
+
+    attendances = Attendance.objects.filter(
+        employee=employee,
+        login_time__year=year,
+        login_time__month=month
+    ).prefetch_related("jobs").order_by("login_time")
+
+    # Initialize empty data for each valid day
+    data = {
+        d: {
+            "date": d,
+            "day": date(year, month, d).strftime("%A"),
+            "job_details": [],
+            "job_no": [],
+            "holiday_worked": False,
+            "off_station": False,
+            "local_site": False,
+            "driv": False,
+        }
+        for d in range(1, days_in_month + 1)
+    }
+
+    # Fill in actual work
+    for att in attendances:
+        day = att.login_time.day
+        for job in att.jobs.all():
+            if job.status == "on_duty":
+                if job.description:
+                    data[day]["job_details"].append(job.description)
+
+                if job.job_no:
+                    data[day]["job_no"].append(job.job_no)
+
+                if job.holiday_worked:
+                    data[day]["holiday_worked"] = True
+                if job.off_station:
+                    data[day]["off_station"] = True
+                if job.local_site:
+                    data[day]["local_site"] = True
+                if job.driv:
+                    data[day]["driv"] = True
+
+    # Prepare final output
+    output = []
+    for d in range(1, days_in_month + 1):
+        row = data[d]
+        output.append({
+            "date": row["date"],
+            "day": row["day"],
+            "job_details": ", ".join(row["job_details"]) if row["job_details"] else "",
+            "job_no": ", ".join(row["job_no"]) if row["job_no"] else "",
+            "holiday_worked": row["holiday_worked"],
+            "off_station": row["off_station"],
+            "local_site": row["local_site"],
+            "driv": row["driv"],
+        })
+
+    return Response({
+        "employee": employee.user.username,
+        "emp_no": employee.emp_no,
+        "month": month_str,
+        "days_in_month": days_in_month,
+        "data": output,
+    })
