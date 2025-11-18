@@ -635,3 +635,15 @@ def monthly_leave_report_employee(request):
         "total_leaves": total,
         "records": records
     })
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def my_leave_balances(request):
+    """Return the logged-in employee's leave balances"""
+    user = request.user
+    if not hasattr(user, "employee"):
+        return Response({"error": "User is not an employee"}, status=400)
+
+    balances = LeaveBalance.objects.filter(employee=user.employee)
+    serializer = LeaveBalanceSerializer(balances, many=True)
+    return Response(serializer.data)
