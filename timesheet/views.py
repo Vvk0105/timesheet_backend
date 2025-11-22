@@ -223,6 +223,15 @@ class JobListCreateView(generics.ListCreateAPIView):
             balance.used += 1
             balance.save()
 
+             # save leave history record
+            LeaveRecord.objects.create(
+                employee=employee,
+                date=today,
+                leave_type=leave_type,
+                reason=data.get("leave_reason", ""),
+                count=1
+            )
+
         # ✅ Save job entry
         serializer.save(attendance=attendance)
 

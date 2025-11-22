@@ -24,7 +24,7 @@ urlpatterns = [
     path("employees/me/", employee_profile, name="employee-profile"),
 
     path('timesheet/<int:employee_id>/', EmployeeTimeSheetView.as_view(), name='employee-timesheet'),
-    path("leavebalance/", AdminLeaveBalanceViewSet.as_view({'post': 'create', 'get': 'list'})),
+    path("leavebalances/", AdminLeaveBalanceViewSet.as_view({'post': 'create', 'get': 'list'})),
     path("leavebalances/me/", my_leave_balances, name="my-leave-balances"),
 
     path("timesheet/monthly/", monthly_timesheet),
