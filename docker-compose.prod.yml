@@ -9,6 +9,9 @@ services:
     command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
     depends_on:
       - db
+    volumes:
+      - ./staticfiles:/app/staticfiles
+
 
   db:
     image: postgres:15
