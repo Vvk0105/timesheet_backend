@@ -61,6 +61,18 @@ services:
     ports:
       - "5433:5432"
 
+    caddy:
+      image: caddy:latest
+      container_name: caddy_server
+      ports:
+        - "80:80"
+        - "443:443"
+      volumes:
+        - ./Caddyfile:/etc/caddy/Caddyfile
+        - ./staticfiles:/app/staticfiles
+      depends_on:
+        - web
+
   nginx:
     image: nginx:latest
     container_name: nginx_prod
