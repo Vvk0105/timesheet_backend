@@ -29,6 +29,7 @@ class LoginView(APIView):
         user = authenticate(username=username, password=password)
         if not user:
             return Response({'error': 'Invalid username or password'}, status=401)
+        category = None
 
         # Employee login
         if hasattr(user, 'employee'):
