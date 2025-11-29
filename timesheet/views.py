@@ -36,6 +36,7 @@ class LoginView(APIView):
             if employee.is_suspended:
                 return Response({'error': 'Your account is suspended'}, status=403)
             role = "employee"
+            category = employee.category
 
         # Admin login
         elif user.is_superuser:
@@ -51,7 +52,8 @@ class LoginView(APIView):
             'refresh': str(refresh),
             'access': str(refresh.access_token),
             'username': user.username,
-            'role': role
+            'role': role,
+            'category': category
         })
 
 
