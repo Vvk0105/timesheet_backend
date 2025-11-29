@@ -1,8 +1,17 @@
 :443 {
+    encode gzip
+
+    # Serve static files
+    handle_path /static/* {
+        root * /app/staticfiles
+        file_server
+    }
+
+    # Proxy everything else to Django
     reverse_proxy web:8000
+
     tls internal
 
-    encode gzip
     header {
         Access-Control-Allow-Origin *
         Access-Control-Allow-Methods "GET, POST, OPTIONS, PUT, DELETE"
@@ -13,3 +22,4 @@
 :80 {
     redir https://{host}{uri}
 }
+
