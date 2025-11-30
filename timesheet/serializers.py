@@ -82,6 +82,34 @@ class JobSerializer(serializers.ModelSerializer):
             'leave_type', 'leave_reason', 'date', 'day', 'created_at'
         ]
 
+    def validate(self, data):
+        employee = self.context['request'].user.employee
+        category = employee.category
+        
+        if category == "A":
+            required_fields = [
+                "start_time", "end_time", "description",
+                "ship_name", "job_no", "location"
+            ]
+
+            missing = [f for f in required_fields if not data.get(f)]
+            if missing:
+                raise serializers.ValidationError(
+                    {"error": f"Missing required fields for Category A: {', '.join(missing)}"}
+                )
+
+        elif category in ["B", "C"]:
+            required_fields = ["start_time", "end_time", "description"]
+
+            missing = [f for f in required_fields if not data.get(f)]
+            if missing:
+                raise serializers.ValidationError(
+                    {"error": f"Missing required fields for Category {category}: {', '.join(missing)}"}
+                )
+
+        return data
+
+
     def get_day(self, obj):
         if obj.attendance and obj.attendance.login_time:
             return obj.attendance.login_time.strftime("%A")
