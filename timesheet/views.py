@@ -248,7 +248,7 @@ class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
         user = self.request.user
         if user.is_superuser:
             return Job.objects.all()
-        return Job.objects.filter(employee__user=user)
+        return Job.objects.filter(attendance__employee__user=user)
 
 
 # 🔹 Admin Manage Employees
