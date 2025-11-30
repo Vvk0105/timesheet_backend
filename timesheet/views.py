@@ -172,9 +172,13 @@ class JobListCreateView(generics.ListCreateAPIView):
         employee_id = self.request.query_params.get("employee")
         start_date = self.request.query_params.get("start_date")
         end_date = self.request.query_params.get("end_date")
+        status_value = self.request.query_params.get("status")
 
         if employee_id:
             queryset = queryset.filter(attendance__employee__id=employee_id)
+
+        if status_value:
+            queryset = queryset.filter(status=status_value)
 
         if start_date and end_date:
             queryset = queryset.filter(created_at__date__range=[start_date, end_date])
