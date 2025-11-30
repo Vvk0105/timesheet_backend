@@ -58,10 +58,12 @@ class Job(models.Model):
     ]
 
     LEAVE_TYPES = [
-        ('sick', 'Sick Leave'),
-        ('personal', 'Personal Leave'),
+        ('sick', 'Sick'),
+        ('casual', 'Casual'),
         ('annual', 'Annual Leave'),
-        ('compensatory', 'Compensatory Leave'),
+        ('compoff', 'Comp-Off'),
+        ('lossofpay', 'Loss of Pay'),
+        ('restrictedholiday', 'Restricted Holiday'),
     ]
 
     attendance = models.ForeignKey(Attendance, on_delete=models.CASCADE, related_name='jobs')
