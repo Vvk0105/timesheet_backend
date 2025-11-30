@@ -12,6 +12,8 @@ services:
       --capture-output
     ports:
       - "8000:8000"
+    volumes:
+      - ./staticfiles:/app/staticfiles
     depends_on:
       - db
 
