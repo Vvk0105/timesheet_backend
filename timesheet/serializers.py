@@ -72,6 +72,7 @@ class JobSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='attendance.employee.user.username', read_only=True)
     date = serializers.DateTimeField(source='attendance.login_time', read_only=True)
     day = serializers.SerializerMethodField()
+    category = serializers.CharField(source='attendance.employee.category', read_only=True)
 
     class Meta:
         model = Job
@@ -79,13 +80,13 @@ class JobSerializer(serializers.ModelSerializer):
             'id', 'employee_name', 'attendance', 'status', 'description',
             'start_time', 'end_time', 'job_no', 'ship_name', 'location',
             'holiday_worked', 'off_station', 'local_site', 'driv',
-            'leave_type', 'leave_reason', 'date', 'day', 'created_at'
+            'leave_type', 'leave_reason', 'date', 'day', 'created_at', 'category'
         ]
 
     def validate(self, data):
         employee = self.context['request'].user.employee
         category = employee.category
-        
+
         if category == "A":
             required_fields = [
                 "start_time", "end_time", "description",
