@@ -253,6 +253,12 @@ class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
         if user.is_superuser:
             return Job.objects.all()
         return Job.objects.filter(attendance__employee__user=user)
+    
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+
+        return Response({"message": "Job entry deleted successfully"}, status=200)
 
 
 # 🔹 Admin Manage Employees
