@@ -87,26 +87,34 @@ class JobSerializer(serializers.ModelSerializer):
         employee = self.context['request'].user.employee
         category = employee.category
 
-        if category == "A":
-            required_fields = [
-                "start_time", "end_time", "description",
-                "ship_name", "job_no", "location"
-            ]
+        if data.get("status") == "leave":
+            if not data.get("leave_type"):
+                raise serializers.ValidationError({"error": "Leave type is required."})
 
-            missing = [f for f in required_fields if not data.get(f)]
-            if missing:
-                raise serializers.ValidationError(
-                    {"error": f"Missing required fields for Category A: {', '.join(missing)}"}
-                )
+            return data
 
-        elif category in ["B", "C"]:
-            required_fields = ["start_time", "end_time", "description"]
+        if data.get("status") == "on_duty":
 
-            missing = [f for f in required_fields if not data.get(f)]
-            if missing:
-                raise serializers.ValidationError(
-                    {"error": f"Missing required fields for Category {category}: {', '.join(missing)}"}
-                )
+            if category == "A":
+                required_fields = [
+                    "start_time", "end_time", "description",
+                    "ship_name", "job_no", "location"
+                ]
+
+                missing = [f for f in required_fields if not data.get(f)]
+                if missing:
+                    raise serializers.ValidationError(
+                        {"error": f"Missing required fields for Category A: {', '.join(missing)}"}
+                    )
+
+            elif category in ["B", "C"]:
+                required_fields = ["start_time", "end_time", "description"]
+
+                missing = [f for f in required_fields if not data.get(f)]
+                if missing:
+                    raise serializers.ValidationError(
+                        {"error": f"Missing required fields for Category {category}: {', '.join(missing)}"}
+                    )
 
         return data
 
