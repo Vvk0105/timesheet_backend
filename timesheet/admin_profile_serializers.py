@@ -20,16 +20,27 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class CreateAdminSerializer(serializers.ModelSerializer):
+    role = serializers.ChoiceField(choices=["staff", "superadmin"])
+
     class Meta:
         model = User
-        fields = ["username", "email", "password"]
+        fields = ["username", "email", "password", "role"]
+        extra_kwargs = {
+            "password": {"write_only": True}
+        }
 
     def create(self, validated_data):
+        role = validated_data.pop("role")
+
+        is_super = True if role == "superadmin" else False
+
         user = User.objects.create_user(
             username=validated_data["username"],
             email=validated_data["email"],
             password=validated_data["password"],
             is_staff=True,
-            is_superuser=False
+            is_superuser=is_super,
         )
+
         return user
+
