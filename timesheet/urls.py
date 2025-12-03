@@ -11,6 +11,8 @@ from .admin_profile_views import (
     CreateAdminView,
 )
 
+from .views_admin_manage import ManageAdminsView, DeleteAdminView
+
 router = DefaultRouter()
 router.register(r'employees', AdminManageEmployee, basename='employee')
 router.register(r'leaves', AdminLeaveViewSet, basename='leave') 
@@ -45,4 +47,8 @@ urlpatterns = [
     path("admin/profile/update/", AdminProfileUpdateView.as_view()),
     path("admin/profile/change-password/", ChangePasswordView.as_view()),
     path("admin/create/", CreateAdminView.as_view()),
+
+    path("admin/manage-admins/", ManageAdminsView.as_view()),
+    path("admin/manage-admins/<int:user_id>/delete/", DeleteAdminView.as_view()),
+
 ]

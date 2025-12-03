@@ -696,11 +696,12 @@ class ProfileView(APIView):
         # If employee exists
         if hasattr(user, "employee"):
             employee = user.employee
-            employee_id = employee.id
-            category = employee.category
-        
+            employee_no = employee.emp_no
+            category_code = employee.category
+            category_label = employee.get_category_display() 
+
         return Response({
             "username": user.username,
-            "employee_id": employee_id,
-            "category": category
+            "employee_no": employee_no,
+            "category": category_label
         })
