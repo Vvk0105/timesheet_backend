@@ -133,21 +133,23 @@ class AttendanceLogoutView(APIView):
 
 
 class AttendanceStatusView(APIView):
-    """
-    Check if the employee already has an active attendance session today.
-    """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         employee = request.user.employee
-        today = date.today()
+        today = timezone.localdate()  # ✅ FIXED
 
-        # Find today's attendance with no logout
+        # Debug logs
+        print("Checking attendance for:", employee.id, employee.user.username)
+        print("Today:", today)
+
         attendance = Attendance.objects.filter(
             employee=employee,
             login_time__date=today,
             logout_time__isnull=True
         ).last()
+
+        print("Found attendance:", attendance)
 
         if attendance:
             return Response({
@@ -689,9 +691,13 @@ class ProfileView(APIView):
 
     def get(self, request):
         user = request.user
-
-        employee_id = None
-        category = None
+        today = timezone.localdate()
+        employee = None
+        employee_no = None
+        category_code = None
+        category_label = None
+        login_time = None
+        selected_time = None
 
         # If employee exists
         if hasattr(user, "employee"):
@@ -699,10 +705,22 @@ class ProfileView(APIView):
             employee_no = employee.emp_no
             category_code = employee.category
             category_label = employee.get_category_display() 
+        
+        attendance = Attendance.objects.filter(
+            employee=employee,
+            login_time__date=today,
+            logout_time__isnull=True
+        ).last()
+
+        if attendance:
+            login_time = attendance.login_time
+            selected_time = attendance.selected_time            
 
         return Response({
             "username": user.username,
             "employee_no": employee_no,
             "category": category_code,
-            "category_label": category_label
+            "category_label": category_label,
+            "login_time": login_time,
+            "selected_time": selected_time
         })
