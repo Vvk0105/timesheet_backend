@@ -18,6 +18,11 @@ class Employee(models.Model):
 
     def __str__(self):
         return self.user.username
+    
+    def delete(self, *args, **kwargs):
+        user = self.user
+        super().delete(*args, **kwargs)
+        user.delete()
 
 
 class Attendance(models.Model):
