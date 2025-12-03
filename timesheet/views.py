@@ -703,5 +703,6 @@ class ProfileView(APIView):
         return Response({
             "username": user.username,
             "employee_no": employee_no,
-            "category": category_label
+            "category": category_code,
+            "category_label": category_label
         })
