@@ -2,7 +2,13 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     AttendanceLoginView, AttendanceLogoutView, JobListCreateView,
-    JobDetailView, AdminManageEmployee, LoginView, SuspendEmployeeView,AdminLeaveViewSet, AdminLeaveBalanceViewSet,EmployeeTimeSheetView,employee_profile, AttendanceStatusView,daywise_report,monthly_timesheet,monthly_leave_report_employee,my_leave_balances
+    JobDetailView, AdminManageEmployee, LoginView, SuspendEmployeeView,AdminLeaveViewSet, AdminLeaveBalanceViewSet,EmployeeTimeSheetView,employee_profile, AttendanceStatusView,daywise_report,monthly_timesheet,monthly_leave_report_employee,my_leave_balances, ProfileView
+)
+from .admin_profile_views import (
+    AdminProfileView,
+    AdminProfileUpdateView,
+    ChangePasswordView,
+    CreateAdminView,
 )
 
 router = DefaultRouter()
@@ -15,6 +21,7 @@ urlpatterns = [
     path('attendance/login/', AttendanceLoginView.as_view(), name='attendance-login'),
     path('attendance/logout/', AttendanceLogoutView.as_view(), name='attendance-logout'),
     path('attendance/status/', AttendanceStatusView.as_view(), name='attendance-status'),
+    path("profile/", ProfileView.as_view(), name="user-profile"),
 
 
     path('workentries/', JobListCreateView.as_view(), name='workentry-list'),
@@ -33,4 +40,9 @@ urlpatterns = [
     path("leaves/report/employee/", monthly_leave_report_employee),
 
     path('', include(router.urls)),
+
+    path("admin/profile/", AdminProfileView.as_view()),
+    path("admin/profile/update/", AdminProfileUpdateView.as_view()),
+    path("admin/profile/change-password/", ChangePasswordView.as_view()),
+    path("admin/create/", CreateAdminView.as_view()),
 ]

@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from django.db.models import Prefetch
 from collections import defaultdict
 from rest_framework.permissions import IsAuthenticated
-from datetime import date
+from datetime import date, datetime
 from rest_framework import serializers
 import calendar
 
@@ -47,14 +47,16 @@ class LoginView(APIView):
 
         else:
             return Response({'error': 'Invalid role'}, status=403)
-
+ 
+        current_date = datetime.now().strftime("%A %d %B %Y")
         refresh = RefreshToken.for_user(user)
         return Response({
             'refresh': str(refresh),
             'access': str(refresh.access_token),
             'username': user.username,
             'role': role,
-            'category': category
+            'category': category,
+            'current_date': current_date
         })
 
 
@@ -163,6 +165,10 @@ class JobListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         queryset = Job.objects.select_related("attendance__employee__user").all()
+        job_no = self.request.query_params.get('job_no')
+
+        if job_no:
+            queryset = queryset.filter(job_no__icontains=job_no)
 
         # ✅ Non-admin users see only their own jobs
         if not user.is_superuser:
@@ -488,6 +494,7 @@ def daywise_report(request):
     """
     report_date = request.GET.get("date")
     employee_id = request.GET.get("employee")
+    job_no = request.GET.get("job_no") 
 
     if not report_date:
         return Response({"error": "date parameter is required (YYYY-MM-DD)"}, status=400)
@@ -497,6 +504,9 @@ def daywise_report(request):
 
     if employee_id:
         filters["attendance__employee_id"] = employee_id
+    
+    if job_no:
+        filters["job_no__icontains"] = job_no 
 
     jobs = Job.objects.filter(**filters).select_related(
         "attendance__employee__user"
@@ -670,3 +680,25 @@ def my_leave_balances(request):
     balances = LeaveBalance.objects.filter(employee=user.employee)
     serializer = LeaveBalanceSerializer(balances, many=True)
     return Response(serializer.data)
+
+
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        employee_id = None
+        category = None
+
+        # If employee exists
+        if hasattr(user, "employee"):
+            employee = user.employee
+            employee_id = employee.id
+            category = employee.category
+        
+        return Response({
+            "username": user.username,
+            "employee_id": employee_id,
+            "category": category
+        })
