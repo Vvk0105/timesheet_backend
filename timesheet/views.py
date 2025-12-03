@@ -31,20 +31,22 @@ class LoginView(APIView):
             return Response({'error': 'Invalid username or password'}, status=401)
         category = None
 
-        # Employee login
-        if hasattr(user, 'employee'):
+        # SUPERADMIN LOGIN
+        if user.is_superuser:
+            role = "superadmin"
+
+        # STAFF ADMIN LOGIN (not superuser)
+        elif user.is_staff:
+            role = "staff"
+
+        # EMPLOYEE LOGIN
+        elif hasattr(user, 'employee'):
             employee = user.employee
             if employee.is_suspended:
                 return Response({'error': 'Your account is suspended'}, status=403)
             role = "employee"
-            category = employee.category
 
-        # Admin login
-        elif user.is_superuser:
-            user.is_staff = True  # ensures DRF admin permission
-            user.save(update_fields=['is_staff'])
-            role = "admin"
-
+        # INVALID
         else:
             return Response({'error': 'Invalid role'}, status=403)
  
