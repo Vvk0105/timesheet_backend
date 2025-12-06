@@ -533,6 +533,7 @@ def daywise_report(request):
             "status": job.status,
             "description": job.description or "-",
             "job_no": job.job_no or "-",
+            "ship_name": job.ship_name or "-",
             "location": job.location or "-",
             "worked_on": ", ".join(worked_on_list) or "-",
             "start_time": job.start_time or "-",
@@ -574,8 +575,8 @@ def monthly_timesheet(request):
         d: {
             "date": d,
             "day": date(year, month, d).strftime("%A"),
-            "job_details": [],
-            "job_no": [],
+            "job_details": "",
+            "job_no": "",
             "holiday_worked": False,
             "off_station": False,
             "local_site": False,
