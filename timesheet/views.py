@@ -29,6 +29,7 @@ class LoginView(APIView):
         user = authenticate(username=username, password=password)
         if not user:
             return Response({'error': 'Invalid username or password'}, status=401)
+
         today = date.today()
         category = None
         role = None
@@ -37,7 +38,7 @@ class LoginView(APIView):
         if user.is_superuser:
             role = "superadmin"
 
-        # STAFF ADMIN LOGIN
+        # STAFF LOGIN
         elif user.is_staff:
             role = "staff"
 
@@ -46,11 +47,11 @@ class LoginView(APIView):
             employee = user.employee
             category = employee.category
 
-            # ❌ Block login if user is suspended
+            # ❌ Suspend check
             if employee.is_suspended:
                 return Response({'error': 'Your account is suspended'}, status=403)
 
-            # ❌ Block login if leave is already marked today
+            # ❌ Leave already marked today
             if Job.objects.filter(
                 attendance__employee=employee,
                 created_at__date=today,
@@ -61,35 +62,29 @@ class LoginView(APIView):
                     status=400
                 )
 
-            # Check attendance for today
+            # 🔍 Check attendance (ONLY block AFTER logout)
             attendance_today = Attendance.objects.filter(
                 employee=employee,
                 login_time__date=today
             ).last()
 
-            # ❌ If attendance exists AND logout_time is NULL → already logged in
-            if attendance_today and attendance_today.logout_time is None:
-                return Response(
-                    {"error": "You are already logged in today. Please logout first."},
-                    status=400
-                )
-
-            # ❌ If attendance exists AND logout_time is NOT NULL → completed attendance
+            # ❌ Only block if logout_time exists (attendance completed)
             if attendance_today and attendance_today.logout_time is not None:
                 return Response(
                     {"error": "You have already completed attendance today. Login not allowed."},
                     status=400
                 )
 
+
             role = "employee"
 
-        # INVALID ROLE
         else:
             return Response({'error': 'Invalid role'}, status=403)
 
-        # SUCCESS RESPONSE
+        # SUCCESS
         refresh = RefreshToken.for_user(user)
         current_date = datetime.now().strftime("%A %d %B %Y")
+
         return Response({
             'refresh': str(refresh),
             'access': str(refresh.access_token),
