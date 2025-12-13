@@ -46,7 +46,12 @@ class Attendance(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        date_str = str(self.login_time.date()) if self.login_time else 'No date'
+        if not self.login_time:
+            return "No date"
+
+        local_login = timezone.localtime(self.login_time)
+        date_str = local_login.date().isoformat()
+
         return f"{self.employee.user.username} - {date_str}"
     
     @property
@@ -103,7 +108,7 @@ class Job(models.Model):
         on_delete=models.SET_NULL,
         related_name="approved_jobs"
     )
-    
+
     def __str__(self):
         return f"{self.attendance.employee.user.username} - {self.status}"
 

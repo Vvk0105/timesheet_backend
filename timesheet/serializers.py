@@ -68,6 +68,12 @@ class AttendanceSummarySerializer(serializers.ModelSerializer):
 
 
 class JobSerializer(serializers.ModelSerializer):
+    is_approved = serializers.BooleanField(read_only=True)
+    approved_at = serializers.DateTimeField(read_only=True)
+    approved_by = serializers.CharField(
+        source="approved_by.username",
+        read_only=True
+    )
     attendance = AttendanceSummarySerializer(read_only=True)
     employee_name = serializers.CharField(source='attendance.employee.user.username', read_only=True)
     date = serializers.DateTimeField(source='attendance.login_time', read_only=True)
@@ -80,7 +86,8 @@ class JobSerializer(serializers.ModelSerializer):
             'id', 'employee_name', 'attendance', 'status', 'description',
             'start_time', 'end_time', 'job_no', 'ship_name', 'location',
             'holiday_worked', 'off_station', 'local_site', 'driv',
-            'leave_type', 'leave_reason', 'date', 'day', 'created_at', 'category'
+            'leave_type', 'leave_reason', 'date', 'day', 'created_at',
+            'category',"is_approved","approved_at", "approved_by",
         ]
 
     def validate(self, data):
@@ -94,7 +101,7 @@ class JobSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"error": "Leave type is required."})
             
             DAILY_LEAVES = ["sick", "casual", "restrictedholiday", "lossofpay", "compoff"]
-            
+
             if leave_type not in DAILY_LEAVES:
                 raise serializers.ValidationError({
                     "error": f"{leave_type} cannot be applied via daily work entry"

@@ -395,6 +395,29 @@ class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
         self.perform_destroy(instance)
 
         return Response({"message": "Job entry deleted successfully"}, status=200)
+    
+class ApproveJobAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, job_id):
+        try:
+            job = Job.objects.get(id=job_id)
+        except Job.DoesNotExist:
+            return Response({"error": "Job not found"}, status=404)
+
+        if job.is_approved:
+            return Response({"message": "Job already approved"})
+
+        job.is_approved = True
+        job.approved_at = timezone.now()
+        job.approved_by = request.user
+        job.save()
+
+        return Response({
+            "message": "Job approved successfully",
+            "approved_at": job.approved_at,
+            "approved_by": request.user.username
+        })
 
 
 # 🔹 Admin Manage Employees
@@ -706,6 +729,8 @@ def daywise_report(request):
             description = job.description or "-"
 
         data.append({
+            "id": job.id,
+            "is_approved": job.is_approved,
             "employee": employee.user.username,
             "status": status,
             "description": description,
