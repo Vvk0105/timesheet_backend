@@ -98,32 +98,57 @@ class LoginView(APIView):
     
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def dashboard_today(request):
+def dashboard_today_stats(request):
     today = timezone.localdate()
 
     total_employees = Employee.objects.count()
-    active_employees = Employee.objects.filter(is_suspended=False).count()
+    suspended = Employee.objects.filter(is_suspended=True).count()
+    active_employees = total_employees - suspended
 
-    # Employees who marked attendance OR leave today
-    attended_today = Attendance.objects.filter(
-        login_time__date=today
-    ).values("employee").distinct().count()
+    attendance_ids = set(
+        Attendance.objects.filter(
+            login_time__date=today,
+            employee_id__isnull=False
+        ).values_list("employee_id", flat=True)
+    )
 
-    leave_today = Job.objects.filter(
-        status="leave",
-        attendance__login_time__date=today
-    ).values("attendance__employee").distinct().count()
+    daily_leave_ids = set(
+        Job.objects.filter(
+            status="leave",
+            attendance__login_time__date=today,
+            attendance__employee_id__isnull=False
+        ).values_list("attendance__employee_id", flat=True)
+    )
 
-    attendance_coverage = attended_today + leave_today
+    annual_leave_ids = set(
+        LeaveRecord.objects.filter(
+            start_date__lte=today,
+            end_date__gte=today,
+            employee_id__isnull=False
+        ).values_list("employee_id", flat=True)
+    )
 
-    REQUIRED_THRESHOLD = max(1, int(active_employees * 0.7))  # 70%
-    alert = attendance_coverage < REQUIRED_THRESHOLD
+    attendance_coverage = attendance_ids | daily_leave_ids | annual_leave_ids
+
+    total_work_entries = Job.objects.filter(
+        attendance__login_time__date=today,
+        status="on_duty"
+    ).count()
+
+    total_leave_today = len(daily_leave_ids | annual_leave_ids)
+
+    THRESHOLD_PERCENT = 80
+    required_attendance = max(1, round(active_employees * THRESHOLD_PERCENT / 100))
+    alert = len(attendance_coverage) < required_attendance
 
     return Response({
+        "date": str(today),
         "total_employees": total_employees,
         "active_employees": active_employees,
-        "attendance_coverage": attendance_coverage,
-        "required_attendance": REQUIRED_THRESHOLD,
+        "attendance_coverage": len(attendance_coverage),
+        "required_attendance": required_attendance,
+        "total_work_entries": total_work_entries,
+        "total_leave_today": total_leave_today,
         "alert": alert,
     })
 
@@ -572,40 +597,88 @@ def employee_profile(request):
 @permission_classes([IsAuthenticated])
 def daywise_report(request):
     report_date_str = request.GET.get("date")
+    employee_id = request.GET.get("employee")
+    job_no = request.GET.get("job_no")
+
     if not report_date_str:
-        return Response({"error": "date is required"}, status=400)
+        return Response(
+            {"error": "date parameter is required (YYYY-MM-DD)"},
+            status=400
+        )
 
-    report_date = datetime.strptime(report_date_str, "%Y-%m-%d").date()
+    # ✅ Convert to date object
+    try:
+        report_date = datetime.strptime(report_date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return Response({"error": "Invalid date format"}, status=400)
 
+    data = []
+
+    # 🔹 STEP 1: Find annual leaves for this day
+    leave_qs = LeaveRecord.objects.filter(
+        start_date__lte=report_date,
+        end_date__gte=report_date
+    ).select_related("employee__user")
+
+    if employee_id:
+        leave_qs = leave_qs.filter(employee_id=employee_id)
+
+    annual_leave_employees = set()
+
+    for leave in leave_qs:
+        annual_leave_employees.add(leave.employee_id)
+
+        description = "Annual Leave"
+        if leave.reason:
+            description += f" - {leave.reason}"
+
+        data.append({
+            "employee": leave.employee.user.username,
+            "status": "leave",
+            "description": description,
+            "job_no": "-",
+            "ship_name": "-",
+            "location": "-",
+            "worked_on": "-",
+            "start_time": "-",
+            "end_time": "-",
+        })
+
+    # 🔹 STEP 2: Fetch jobs (excluding employees on annual leave)
     filters = {"attendance__login_time__date": report_date}
 
-    employee_id = request.GET.get("employee")
     if employee_id:
         filters["attendance__employee_id"] = employee_id
+
+    if job_no:
+        filters["job_no__icontains"] = job_no
 
     jobs = Job.objects.filter(**filters).select_related(
         "attendance__employee__user"
     )
 
-    data = []
-
     for job in jobs:
         employee = job.attendance.employee
 
-        leave = LeaveRecord.objects.filter(
-            employee=employee,
-            start_date__lte=report_date,
-            end_date__gte=report_date
-        ).first()
+        # ❌ Skip — already covered by annual leave
+        if employee.id in annual_leave_employees:
+            continue
 
-        if leave:
-            status = "leave"
-            description = f"Annual Leave"
-            if leave.reason:
-                description += f" - {leave.reason}"
-        elif job.status == "leave":
+        worked_on_list = []
+        if job.holiday_worked:
+            worked_on_list.append("Holiday Worked")
+        if job.off_station:
+            worked_on_list.append("Off Station")
+        if job.local_site:
+            worked_on_list.append("Local Site")
+        if job.driv:
+            worked_on_list.append("Driving")
+
+        if job.status == "leave":
             status = "leave"
             description = f"Leave: {job.leave_type.capitalize()}"
+            if job.leave_reason:
+                description += f" - {job.leave_reason}"
         else:
             status = "on_duty"
             description = job.description or "-"
@@ -617,7 +690,7 @@ def daywise_report(request):
             "job_no": job.job_no or "-",
             "ship_name": job.ship_name or "-",
             "location": job.location or "-",
-            "worked_on": "-",
+            "worked_on": ", ".join(worked_on_list) or "-",
             "start_time": job.start_time or "-",
             "end_time": job.end_time or "-",
         })
