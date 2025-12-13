@@ -99,6 +99,7 @@ class LoginView(APIView):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def dashboard_today_stats(request):
+    now = timezone.localtime()
     today = timezone.localdate()
 
     total_employees = Employee.objects.count()
@@ -143,6 +144,9 @@ def dashboard_today_stats(request):
 
     return Response({
         "date": str(today),
+        "business_datetime": now.isoformat(),
+        "business_date": today.isoformat(),
+        "business_timezone": "Asia/Dubai",
         "total_employees": total_employees,
         "active_employees": active_employees,
         "attendance_coverage": len(attendance_coverage),
