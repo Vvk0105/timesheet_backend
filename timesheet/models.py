@@ -99,29 +99,36 @@ class Job(models.Model):
 
 class LeaveRecord(models.Model):
     LEAVE_TYPES = [
-        ('sick', 'Sick Leave'),
-        ('personal', 'Personal Leave'),
+        ('sick', 'Sick'),
+        ('casual', 'Casual'),
         ('annual', 'Annual Leave'),
-        ('compensatory', 'Compensatory Leave'),
+        ('compoff', 'Comp-Off'),
+        ('lossofpay', 'Loss of Pay'),
+        ('restrictedholiday', 'Restricted Holiday'),
     ]
 
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_records')
     leave_type = models.CharField(max_length=50, choices=LEAVE_TYPES)
-    reason = models.TextField(blank=True, null=True)
-    count = models.PositiveIntegerField(default=1, help_text="Number of leave days")
-    date = models.DateField(default=date.today)
 
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    total_days = models.PositiveIntegerField(null=True, blank=True)
+
+    reason = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.employee.user.username} - {self.leave_type} ({self.count} days)"
+        return f"{self.employee.user.username} {self.leave_type} ({self.start_date} → {self.end_date})"
+
 
 class LeaveBalance(models.Model):
     LEAVE_TYPES = [
-        ('sick', 'Sick Leave'),
-        ('personal', 'Personal Leave'),
+        ('sick', 'Sick'),
+        ('casual', 'Casual'),
         ('annual', 'Annual Leave'),
-        ('compensatory', 'Compensatory Leave'),
+        ('compoff', 'Comp-Off'),
+        ('lossofpay', 'Loss of Pay'),
+        ('restrictedholiday', 'Restricted Holiday'),
     ]
 
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_balances')

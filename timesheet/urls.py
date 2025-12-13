@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     AttendanceLoginView, AttendanceLogoutView, JobListCreateView,
-    JobDetailView, AdminManageEmployee, LoginView, SuspendEmployeeView,AdminLeaveViewSet, AdminLeaveBalanceViewSet,EmployeeTimeSheetView,employee_profile, AttendanceStatusView,daywise_report,monthly_timesheet,monthly_leave_report_employee,my_leave_balances, ProfileView
+    JobDetailView, AdminManageEmployee, LoginView, SuspendEmployeeView,AdminLeaveViewSet, AdminLeaveBalanceViewSet,EmployeeTimeSheetView,employee_profile, AttendanceStatusView,daywise_report,monthly_timesheet,monthly_leave_report_employee,my_leave_balances, ProfileView, ApplyLeaveAPIView, dashboard_today_stats
 )
 from .admin_profile_views import (
     AdminProfileView,
@@ -24,6 +24,8 @@ urlpatterns = [
     path('attendance/logout/', AttendanceLogoutView.as_view(), name='attendance-logout'),
     path('attendance/status/', AttendanceStatusView.as_view(), name='attendance-status'),
     path("profile/", ProfileView.as_view(), name="user-profile"),
+    path("dashboard/today/", dashboard_today_stats),
+
 
 
     path('workentries/', JobListCreateView.as_view(), name='workentry-list'),
@@ -33,6 +35,7 @@ urlpatterns = [
     path("employees/me/", employee_profile, name="employee-profile"),
 
     path('timesheet/<int:employee_id>/', EmployeeTimeSheetView.as_view(), name='employee-timesheet'),
+    path("leaves/apply/", ApplyLeaveAPIView.as_view()),
     path("leavebalances/", AdminLeaveBalanceViewSet.as_view({'post': 'create', 'get': 'list'})),
     path("leavebalances/me/", my_leave_balances, name="my-leave-balances"),
 

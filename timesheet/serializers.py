@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Employee, Attendance, Job, LeaveRecord, LeaveBalance
-
+from datetime import date
 
 # 🔹 User serializer (no major change)
 class UserSerializer(serializers.ModelSerializer):
@@ -88,8 +88,17 @@ class JobSerializer(serializers.ModelSerializer):
         category = employee.category
 
         if data.get("status") == "leave":
+            leave_type = data.get("leave_type")
+
             if not data.get("leave_type"):
                 raise serializers.ValidationError({"error": "Leave type is required."})
+            
+            DAILY_LEAVES = ["sick", "casual", "restrictedholiday", "lossofpay", "compoff"]
+            
+            if leave_type not in DAILY_LEAVES:
+                raise serializers.ValidationError({
+                    "error": f"{leave_type} cannot be applied via daily work entry"
+                })
 
             return data
 
@@ -141,3 +150,36 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
 
     def get_remaining(self, obj):
         return obj.remaining()
+
+class LeaveApplySerializer(serializers.Serializer):
+    leave_type = serializers.ChoiceField(choices=LeaveRecord.LEAVE_TYPES)
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, data):
+        start = data['start_date']
+        end = data['end_date']
+
+        if start > end:
+            raise serializers.ValidationError("Start date cannot be after end date")
+
+        if start < date.today():
+            raise serializers.ValidationError("Leave cannot start in the past")
+
+        total_days = (end - start).days + 1
+        employee = self.context['employee']
+
+        balance = LeaveBalance.objects.filter(
+            employee=employee,
+            leave_type=data['leave_type']
+        ).first()
+
+        if not balance:
+            raise serializers.ValidationError("Leave balance not found")
+
+        if balance.used + total_days > balance.total_allocated:
+            raise serializers.ValidationError("Insufficient leave balance")
+
+        data['total_days'] = total_days
+        return data

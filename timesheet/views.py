@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import Attendance, Job, Employee, LeaveRecord, LeaveBalance
-from .serializers import AttendanceSerializer, JobSerializer, EmployeeSerializer, LeaveRecordSerializer,LeaveBalanceSerializer
+from .serializers import AttendanceSerializer, JobSerializer, EmployeeSerializer, LeaveRecordSerializer,LeaveBalanceSerializer,LeaveApplySerializer
 from rest_framework.permissions import AllowAny
 from rest_framework.authentication import BasicAuthentication
 from rest_framework.decorators import action, api_view, permission_classes
@@ -16,6 +16,8 @@ from rest_framework.permissions import IsAuthenticated
 from datetime import date, datetime
 from rest_framework import serializers
 import calendar
+from django.db import transaction
+from .utils import is_employee_on_leave
 
 # 🔹 Unified Login (admin + employee)
 class LoginView(APIView):
@@ -51,15 +53,15 @@ class LoginView(APIView):
             if employee.is_suspended:
                 return Response({'error': 'Your account is suspended'}, status=403)
 
-            # ❌ Leave already marked today
-            if Job.objects.filter(
-                attendance__employee=employee,
-                created_at__date=today,
-                status='leave'
+           # ❌ BLOCK if today is inside ANY approved leave (annual / sick / etc)
+            if LeaveRecord.objects.filter(
+                employee=employee,
+                start_date__lte=today,
+                end_date__gte=today
             ).exists():
                 return Response(
-                    {"error": "You have already marked leave for today. Login not allowed."},
-                    status=400
+                    {"error": "You are on approved leave today. Login not allowed."},
+                    status=403
                 )
 
             # 🔍 Check attendance (ONLY block AFTER logout)
@@ -93,6 +95,63 @@ class LoginView(APIView):
             'category': category,
             'current_date': current_date
         })
+    
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def dashboard_today_stats(request):
+    today = timezone.localdate()
+
+    total_employees = Employee.objects.count()
+    suspended = Employee.objects.filter(is_suspended=True).count()
+    active_employees = total_employees - suspended
+
+    # Attendance today
+    attendance_qs = Attendance.objects.filter(login_time__date=today)
+    attendance_ids = set(attendance_qs.values_list("employee_id", flat=True))
+
+    # Daily leave via Job
+    daily_leave_ids = set(
+        Job.objects.filter(
+            status="leave",
+            attendance__login_time__date=today
+        ).values_list("attendance__employee_id", flat=True)
+    )
+
+    # Annual leave
+    annual_leave_ids = set(
+        LeaveRecord.objects.filter(
+            start_date__lte=today,
+            end_date__gte=today
+        ).values_list("employee_id", flat=True)
+    )
+
+    leave_ids = daily_leave_ids | annual_leave_ids
+    attendance_coverage = attendance_ids | leave_ids
+
+    # Counts
+    total_work_entries = Job.objects.filter(
+        attendance__login_time__date=today,
+        status="on_duty"
+    ).count()
+
+    total_leave_today = len(leave_ids)
+
+    # Threshold logic
+    THRESHOLD_PERCENT = 80
+    required_attendance = round(active_employees * THRESHOLD_PERCENT / 100)
+    alert = len(attendance_coverage) < required_attendance
+
+    return Response({
+        "date": str(today),
+        "total_employees": total_employees,
+        "active_employees": active_employees,
+        "attendance_coverage": len(attendance_coverage),
+        "required_attendance": required_attendance,
+        "total_work_entries": total_work_entries,
+        "total_leave_today": total_leave_today,
+        "alert": alert,
+    })
+
 
 
 # 🔹 Attendance
@@ -103,6 +162,12 @@ class AttendanceLoginView(APIView):
         employee = request.user.employee
         selected_time = request.data.get('selected_time')
         today = date.today()
+
+        if is_employee_on_leave(employee, today):
+            return Response(
+                {"error": "You are on leave today"},
+                status=400
+            )
 
         # 🔒 Check if user already marked leave today
         if Job.objects.filter(
@@ -234,6 +299,10 @@ class JobListCreateView(generics.ListCreateAPIView):
         status_value = data.get("status")
         leave_type = data.get("leave_type")
 
+        if is_employee_on_leave(employee, date.today()):
+            raise serializers.ValidationError(
+                {"error": "Cannot create job while on leave"}
+            )
         # ✅ Find the employee's current attendance
         attendance = Attendance.objects.filter(employee=employee, logout_time__isnull=True).last()
         if not attendance:
@@ -274,12 +343,15 @@ class JobListCreateView(generics.ListCreateAPIView):
             balance.save()
 
              # save leave history record
+            today = timezone.localdate()
+
             LeaveRecord.objects.create(
                 employee=employee,
-                date=today,
                 leave_type=leave_type,
-                reason=data.get("leave_reason", ""),
-                count=1
+                start_date=today,
+                end_date=today,
+                total_days=1,
+                reason=data.get("leave_reason", "")
             )
 
         # ✅ Save job entry
@@ -525,32 +597,74 @@ def employee_profile(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def daywise_report(request):
-    """
-    Returns work entries for a specific date.
-    Optional: filter by employee.
-    """
-    report_date = request.GET.get("date")
+    report_date_str = request.GET.get("date")
     employee_id = request.GET.get("employee")
-    job_no = request.GET.get("job_no") 
+    job_no = request.GET.get("job_no")
 
-    if not report_date:
-        return Response({"error": "date parameter is required (YYYY-MM-DD)"}, status=400)
+    if not report_date_str:
+        return Response(
+            {"error": "date parameter is required (YYYY-MM-DD)"},
+            status=400
+        )
 
-    # Correct filter: use attendance date, not created_at
+    # ✅ Convert to date object
+    try:
+        report_date = datetime.strptime(report_date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return Response({"error": "Invalid date format"}, status=400)
+
+    data = []
+
+    # 🔹 STEP 1: Find annual leaves for this day
+    leave_qs = LeaveRecord.objects.filter(
+        start_date__lte=report_date,
+        end_date__gte=report_date
+    ).select_related("employee__user")
+
+    if employee_id:
+        leave_qs = leave_qs.filter(employee_id=employee_id)
+
+    annual_leave_employees = set()
+
+    for leave in leave_qs:
+        annual_leave_employees.add(leave.employee_id)
+
+        description = leave.leave_type
+        if leave.reason:
+            description += f" - {leave.reason}"
+
+        data.append({
+            "employee": leave.employee.user.username,
+            "status": "leave",
+            "description": description,
+            "job_no": "-",
+            "ship_name": "-",
+            "location": "-",
+            "worked_on": "-",
+            "start_time": "-",
+            "end_time": "-",
+        })
+
+    # 🔹 STEP 2: Fetch jobs (excluding employees on annual leave)
     filters = {"attendance__login_time__date": report_date}
 
     if employee_id:
         filters["attendance__employee_id"] = employee_id
-    
+
     if job_no:
-        filters["job_no__icontains"] = job_no 
+        filters["job_no__icontains"] = job_no
 
     jobs = Job.objects.filter(**filters).select_related(
         "attendance__employee__user"
     )
 
-    data = []
     for job in jobs:
+        employee = job.attendance.employee
+
+        # ❌ Skip — already covered by annual leave
+        if employee.id in annual_leave_employees:
+            continue
+
         worked_on_list = []
         if job.holiday_worked:
             worked_on_list.append("Holiday Worked")
@@ -561,10 +675,19 @@ def daywise_report(request):
         if job.driv:
             worked_on_list.append("Driving")
 
+        if job.status == "leave":
+            status = "leave"
+            description = f"Leave: {job.leave_type.capitalize()}"
+            if job.leave_reason:
+                description += f" - {job.leave_reason}"
+        else:
+            status = "on_duty"
+            description = job.description or "-"
+
         data.append({
-            "employee": job.attendance.employee.user.username,
-            "status": job.status,
-            "description": job.description or "-",
+            "employee": employee.user.username,
+            "status": status,
+            "description": description,
             "job_no": job.job_no or "-",
             "ship_name": job.ship_name or "-",
             "location": job.location or "-",
@@ -575,41 +698,51 @@ def daywise_report(request):
 
     return Response(data)
 
-
-
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def monthly_timesheet(request):
     employee_id = request.GET.get("employee")
-    month_str = request.GET.get("month")  # format: YYYY-MM
+    month_str = request.GET.get("month")  # YYYY-MM
 
     if not employee_id or not month_str:
-        return Response({"error": "employee and month (YYYY-MM) are required"}, status=400)
+        return Response(
+            {"error": "employee and month (YYYY-MM) are required"},
+            status=400
+        )
 
     try:
         employee = Employee.objects.get(id=employee_id)
     except Employee.DoesNotExist:
         return Response({"error": "Employee not found"}, status=404)
 
-    # Extract year + month
+    # Extract year & month
     year, month = map(int, month_str.split("-"))
+    days_in_month = calendar.monthrange(year, month)[1]
 
-    # 🔥 FIX: Find number of days in month
-    days_in_month = calendar.monthrange(year, month)[1]  # e.g. 30 for November
-
+    # Fetch attendance & jobs
     attendances = Attendance.objects.filter(
         employee=employee,
         login_time__year=year,
         login_time__month=month
-    ).prefetch_related("jobs").order_by("login_time")
+    ).prefetch_related("jobs")
 
-    # Initialize empty data for each valid day
+    attendance_map = {att.login_time.day: att for att in attendances}
+
+    # Fetch annual leaves overlapping this month
+    annual_leaves = LeaveRecord.objects.filter(
+        employee=employee,
+        leave_type="annual",
+        start_date__year__lte=year,
+        end_date__year__gte=year
+    )
+
+    # Initialize month structure
     data = {
         d: {
             "date": d,
             "day": date(year, month, d).strftime("%A"),
-            "job_details": "",
-            "job_no": "",
+            "job_details": "-",
+            "job_no": "-",
             "holiday_worked": False,
             "off_station": False,
             "local_site": False,
@@ -618,48 +751,62 @@ def monthly_timesheet(request):
         for d in range(1, days_in_month + 1)
     }
 
-    for att in attendances:
-        day = att.login_time.day
+    # Fill data day-by-day
+    for d in range(1, days_in_month + 1):
+        current_date = date(year, month, d)
 
-        for job in att.jobs.all():
+        # 🔹 PRIORITY 1: Annual Leave
+        leave = annual_leaves.filter(
+            start_date__lte=current_date,
+            end_date__gte=current_date
+        ).first()
 
-            # --- LEAVE ENTRY ---
+        if leave:
+            data[d]["job_details"] = "Annual Leave"
+            data[d]["job_no"] = "-"
+            continue
+
+        # 🔹 PRIORITY 2: Attendance + Jobs
+        attendance = attendance_map.get(d)
+        if not attendance:
+            continue
+
+        for job in attendance.jobs.all():
+
+            # Daily leave (sick / casual / etc.)
             if job.status == "leave":
-                leave_text = f"Leave: {job.leave_type.capitalize()}"
+                text = f"Leave: {job.leave_type.capitalize()}"
                 if job.leave_reason:
-                    leave_text += f" - {job.leave_reason}"
-                data[day]["job_details"] = leave_text
+                    text += f" - {job.leave_reason}"
+                data[d]["job_details"] = text
                 continue
 
-            # --- DUTY ENTRY ---
+            # On duty jobs
             if job.description:
-                if data[day]["job_details"]:
-                    data[day]["job_details"] += ", "
-                data[day]["job_details"] += job.description
+                if data[d]["job_details"] == "-":
+                    data[d]["job_details"] = job.description
+                else:
+                    data[d]["job_details"] += ", " + job.description
 
             if job.job_no:
-                if data[day]["job_no"]:
-                    data[day]["job_no"] += ", "
-                data[day]["job_no"] += job.job_no
+                if data[d]["job_no"] == "-":
+                    data[d]["job_no"] = job.job_no
+                else:
+                    data[d]["job_no"] += ", " + job.job_no
 
-            if job.holiday_worked:
-                data[day]["holiday_worked"] = True
-            if job.off_station:
-                data[day]["off_station"] = True
-            if job.local_site:
-                data[day]["local_site"] = True
-            if job.driv:
-                data[day]["driv"] = True
-
-    output = list(data.values())
+            data[d]["holiday_worked"] |= job.holiday_worked
+            data[d]["off_station"] |= job.off_station
+            data[d]["local_site"] |= job.local_site
+            data[d]["driv"] |= job.driv
 
     return Response({
         "employee": employee.user.username,
         "emp_no": employee.emp_no,
         "month": month_str,
         "days_in_month": days_in_month,
-        "data": output,
+        "data": list(data.values()),
     })
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -758,3 +905,38 @@ class ProfileView(APIView):
             "login_time": login_time,
             "selected_time": selected_time
         })
+    
+class ApplyLeaveAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        employee = request.user.employee
+
+        serializer = LeaveApplySerializer(
+            data=request.data,
+            context={'employee': employee}
+        )
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        with transaction.atomic():
+            leave = LeaveRecord.objects.create(
+                employee=employee,
+                leave_type=data['leave_type'],
+                start_date=data['start_date'],
+                end_date=data['end_date'],
+                total_days=data['total_days'],
+                reason=data.get('reason')
+            )
+
+            balance = LeaveBalance.objects.get(
+                employee=employee,
+                leave_type=data['leave_type']
+            )
+            balance.used += data['total_days']
+            balance.save()
+
+        return Response({
+            "message": "Leave applied successfully",
+            "days": data['total_days']
+        }, status=201)
