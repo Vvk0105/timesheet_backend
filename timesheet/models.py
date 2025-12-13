@@ -94,6 +94,16 @@ class Job(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    is_approved = models.BooleanField(default=False)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="approved_jobs"
+    )
+    
     def __str__(self):
         return f"{self.attendance.employee.user.username} - {self.status}"
 

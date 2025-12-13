@@ -32,7 +32,7 @@ class LoginView(APIView):
         if not user:
             return Response({'error': 'Invalid username or password'}, status=401)
 
-        today = date.today()
+        today = timezone.localdate()
         category = None
         role = None
 
@@ -85,7 +85,7 @@ class LoginView(APIView):
 
         # SUCCESS
         refresh = RefreshToken.for_user(user)
-        current_date = datetime.now().strftime("%A %d %B %Y")
+        current_date = timezone.localtime().strftime("%A %d %B %Y")
 
         return Response({
             'refresh': str(refresh),
@@ -160,7 +160,7 @@ class AttendanceLoginView(APIView):
     def post(self, request):
         employee = request.user.employee
         selected_time = request.data.get('selected_time')
-        today = date.today()
+        today = timezone.localdate()
 
         if is_employee_on_leave(employee, today):
             return Response(
@@ -234,7 +234,7 @@ class AttendanceStatusView(APIView):
 
     def get(self, request):
         employee = request.user.employee
-        today = timezone.localdate()  # ✅ FIXED
+        today = timezone.localdate()
 
         # Debug logs
         print("Checking attendance for:", employee.id, employee.user.username)
@@ -368,7 +368,25 @@ class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
             return Job.objects.all()
         return Job.objects.filter(attendance__employee__user=user)
     
+    def update(self, request, *args, **kwargs):
+        job = self.get_object()
+        if job.is_approved  and not request.user.is_superuser:
+            return Response(
+                {"error": "The Job is approved and cannot be edited"},
+                status=403
+            )
+        return super().update(request, *args, **kwargs) 
+    
     def destroy(self, request, *args, **kwargs):
+        job = self.get_object()
+
+        # ❌ Block employee delete
+        if job.is_approved and not request.user.is_superuser:
+            return Response(
+                {"error": "This job is approved and cannot be deleted"},
+                status=403
+            )
+        
         instance = self.get_object()
         self.perform_destroy(instance)
 
