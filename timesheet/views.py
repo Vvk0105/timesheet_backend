@@ -721,7 +721,7 @@ def daywise_report(request):
 
         if job.status == "leave":
             status = "leave"
-            description = f"Leave: {job.leave_type.capitalize()}"
+            description = f"Reason: {job.leave_type}"
             if job.leave_reason:
                 description += f" - {job.leave_reason}"
         else:
