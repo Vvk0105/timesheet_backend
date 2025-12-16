@@ -673,7 +673,7 @@ def daywise_report(request):
     for leave in leave_qs:
         annual_leave_employees.add(leave.employee_id)
 
-        description = "Annual Leave"
+        description = leave.leave_type
         if leave.reason:
             description += f" - {leave.reason}"
 
