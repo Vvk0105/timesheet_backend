@@ -419,6 +419,25 @@ class ApproveJobAPIView(APIView):
             "approved_by": request.user.username
         })
 
+class UnapproveJobAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, job_id):
+        try:
+            job = Job.objects.get(id=job_id)
+        except Job.DoesNotExist:
+            return Response({"error": "Job not found"}, status=404)
+
+        if not job.is_approved:
+            return Response({"message": "Job is already unapproved"})
+
+        job.is_approved = False
+        job.approved_at = None
+        job.approved_by = None
+        job.save()
+
+        return Response({"message": "Job approval reverted successfully"})
+
 
 # 🔹 Admin Manage Employees
 class AdminManageEmployee(viewsets.ModelViewSet):
@@ -782,9 +801,26 @@ def monthly_timesheet(request):
         for job in att.jobs.all():
             if job.status == "leave":
                 data[day]["job_details"] = f"Leave: {job.leave_type}"
-            else:
-                data[day]["job_details"] = job.description or "-"
-                data[day]["job_no"] = job.job_no or "-"
+                continue
+            
+            if job.description:
+                data[day]["job_details"] = job.description
+
+            if job.job_no:
+                data[day]["job_no"] = job.job_no
+
+            if job.holiday_worked:
+                data[day]["holiday_worked"] = True
+
+            if job.off_station:
+                data[day]["off_station"] = True
+
+            if job.local_site:
+                data[day]["local_site"] = True
+
+            if job.driv:
+                data[day]["driv"] = True
+
 
     # 2️⃣ Inject annual leave
     leaves = LeaveRecord.objects.filter(

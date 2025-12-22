@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     AttendanceLoginView, AttendanceLogoutView, JobListCreateView,
-    JobDetailView, AdminManageEmployee, LoginView, SuspendEmployeeView,AdminLeaveViewSet, AdminLeaveBalanceViewSet,EmployeeTimeSheetView,employee_profile, AttendanceStatusView,daywise_report,monthly_timesheet,monthly_leave_report_employee,my_leave_balances, ProfileView, ApplyLeaveAPIView, dashboard_today_stats, ApproveJobAPIView
+    JobDetailView, AdminManageEmployee, LoginView, SuspendEmployeeView,AdminLeaveViewSet, AdminLeaveBalanceViewSet,EmployeeTimeSheetView,employee_profile, AttendanceStatusView,daywise_report,monthly_timesheet,monthly_leave_report_employee,my_leave_balances, ProfileView, ApplyLeaveAPIView, dashboard_today_stats, ApproveJobAPIView, UnapproveJobAPIView
 )
 from .admin_profile_views import (
     AdminProfileView,
@@ -31,6 +31,7 @@ urlpatterns = [
     path('workentries/', JobListCreateView.as_view(), name='workentry-list'),
     path('workentries/<int:pk>/', JobDetailView.as_view(), name='workentry-detail'),
     path("workentries/<int:job_id>/approve/", ApproveJobAPIView.as_view()),
+    path("workentries/<int:job_id>/unapprove/", UnapproveJobAPIView.as_view()),
 
     path('employees/<int:pk>/suspend/', SuspendEmployeeView.as_view(), name='suspend-employee'),
     path("employees/me/", employee_profile, name="employee-profile"),
