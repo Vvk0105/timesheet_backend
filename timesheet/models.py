@@ -71,9 +71,9 @@ class Job(models.Model):
         ('sick', 'Sick'),
         ('casual', 'Casual'),
         ('annual', 'Annual Leave'),
-        ('compoff', 'Comp-Off'),
-        ('lossofpay', 'Loss of Pay'),
-        ('restrictedholiday', 'Restricted Holiday'),
+        # ('compoff', 'Comp-Off'),
+        # ('lossofpay', 'Loss of Pay'),
+        # ('restrictedholiday', 'Restricted Holiday'),
     ]
 
     attendance = models.ForeignKey(Attendance, on_delete=models.CASCADE, related_name='jobs')
@@ -117,9 +117,9 @@ class LeaveRecord(models.Model):
         ('sick', 'Sick'),
         ('casual', 'Casual'),
         ('annual', 'Annual Leave'),
-        ('compoff', 'Comp-Off'),
-        ('lossofpay', 'Loss of Pay'),
-        ('restrictedholiday', 'Restricted Holiday'),
+        # ('compoff', 'Comp-Off'),
+        # ('lossofpay', 'Loss of Pay'),
+        # ('restrictedholiday', 'Restricted Holiday'),
     ]
 
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_records')
@@ -141,9 +141,9 @@ class LeaveBalance(models.Model):
         ('sick', 'Sick'),
         ('casual', 'Casual'),
         ('annual', 'Annual Leave'),
-        ('compoff', 'Comp-Off'),
-        ('lossofpay', 'Loss of Pay'),
-        ('restrictedholiday', 'Restricted Holiday'),
+        # ('compoff', 'Comp-Off'),
+        # ('lossofpay', 'Loss of Pay'),
+        # ('restrictedholiday', 'Restricted Holiday'),
     ]
 
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='leave_balances')
