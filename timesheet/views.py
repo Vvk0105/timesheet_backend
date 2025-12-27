@@ -779,8 +779,8 @@ def monthly_timesheet(request):
         d: {
             "date": d,
             "day": date(year, month, d).strftime("%A"),
-            "job_details": "-",
-            "job_no": "-",
+            "job_details": "",
+            "job_no": "",
             "holiday_worked": False,
             "off_station": False,
             "local_site": False,
@@ -798,28 +798,37 @@ def monthly_timesheet(request):
 
     for att in attendances:
         day = att.login_time.day
+
         for job in att.jobs.all():
+
+            # --- LEAVE ENTRY ---
             if job.status == "leave":
-                data[day]["job_details"] = f"Leave: {job.leave_type}"
+                leave_text = f"Leave: {job.leave_type.capitalize()}"
+                if job.leave_reason:
+                    leave_text += f" - {job.leave_reason}"
+                data[day]["job_details"] = leave_text
                 continue
-            
+
+            # --- DUTY ENTRY (ACCUMULATE) ---
             if job.description:
-                data[day]["job_details"] = job.description
+                if data[day]["job_details"] and data[day]["job_details"] != "-":
+                    data[day]["job_details"] += ", "
+                data[day]["job_details"] += job.description
 
             if job.job_no:
-                data[day]["job_no"] = job.job_no
+                if data[day]["job_no"] and data[day]["job_no"] != "-":
+                    data[day]["job_no"] += ", "
+                data[day]["job_no"] += job.job_no
 
             if job.holiday_worked:
                 data[day]["holiday_worked"] = True
-
             if job.off_station:
                 data[day]["off_station"] = True
-
             if job.local_site:
                 data[day]["local_site"] = True
-
             if job.driv:
                 data[day]["driv"] = True
+
 
 
     # 2️⃣ Inject annual leave
