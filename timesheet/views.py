@@ -659,61 +659,130 @@ def employee_profile(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def daywise_report(request):
-    report_date_str = request.GET.get("date")
+def work_reports(request):
+    date_str = request.GET.get("date")
+    month_str = request.GET.get("month")
     employee_id = request.GET.get("employee")
     job_no = request.GET.get("job_no")
 
-    if not report_date_str:
+    # ❌ validation
+    if date_str and month_str:
         return Response(
-            {"error": "date parameter is required (YYYY-MM-DD)"},
+            {"error": "Use either date OR month, not both"},
             status=400
         )
 
-    # ✅ Convert to date object
-    try:
-        report_date = datetime.strptime(report_date_str, "%Y-%m-%d").date()
-    except ValueError:
-        return Response({"error": "Invalid date format"}, status=400)
+    if not date_str and not month_str:
+        return Response(
+            {"error": "Either date or month is required"},
+            status=400
+        )
+
+    # ❌ prevent duplicate query params
+    for key in request.GET:
+        if len(request.GET.getlist(key)) > 1:
+            return Response(
+                {"error": f"Duplicate query param: {key}"},
+                status=400
+            )
 
     data = []
 
-    # 🔹 STEP 1: Find annual leaves for this day
-    leave_qs = LeaveRecord.objects.filter(
-        start_date__lte=report_date,
-        end_date__gte=report_date
-    ).select_related("employee__user")
+    # ======================================================
+    # 🟦 DAY-WISE REPORT
+    # ======================================================
+    if date_str:
+        report_date = datetime.strptime(date_str, "%Y-%m-%d").date()
 
-    if employee_id:
-        leave_qs = leave_qs.filter(employee_id=employee_id)
+        # Annual leave first
+        leave_qs = LeaveRecord.objects.filter(
+            start_date__lte=report_date,
+            end_date__gte=report_date
+        ).select_related("employee__user")
 
-    annual_leave_employees = set()
+        if employee_id:
+            leave_qs = leave_qs.filter(employee_id=employee_id)
 
-    for leave in leave_qs:
-        annual_leave_employees.add(leave.employee_id)
+        annual_leave_employees = set()
 
-        description = leave.leave_type
-        if leave.reason:
-            description += f" - {leave.reason}"
+        for leave in leave_qs:
+            annual_leave_employees.add(leave.employee_id)
 
-        data.append({
-            "employee": leave.employee.user.username,
-            "status": "leave",
-            "description": description,
-            "job_no": "-",
-            "ship_name": "-",
-            "location": "-",
-            "worked_on": "-",
-            "start_time": "-",
-            "end_time": "-",
-        })
+            desc = leave.leave_type.capitalize()
+            if leave.reason:
+                desc += f" - {leave.reason}"
 
-    # 🔹 STEP 2: Fetch jobs (excluding employees on annual leave)
-    filters = {"attendance__login_time__date": report_date}
+            data.append({
+                "employee": leave.employee.user.username,
+                "status": "leave",
+                "description": desc,
+                "job_no": "-",
+                "ship_name": "-",
+                "location": "-",
+                "worked_on": "-",
+                "start_time": "-",
+                "end_time": "-",
+                "is_approved": True,
+            })
+
+        filters = {"attendance__login_time__date": report_date}
+
+        if employee_id:
+            filters["attendance__employee_id"] = employee_id
+        if job_no:
+            filters["job_no__icontains"] = job_no
+
+        jobs = Job.objects.filter(**filters).select_related(
+            "attendance__employee__user"
+        )
+
+        for job in jobs:
+            emp = job.attendance.employee
+            if emp.id in annual_leave_employees:
+                continue
+
+            worked_on = []
+            if job.holiday_worked: worked_on.append("Holiday Worked")
+            if job.off_station: worked_on.append("Off Station")
+            if job.local_site: worked_on.append("Local Site")
+            if job.driv: worked_on.append("Driving")
+
+            if job.status == "leave":
+                desc = job.leave_type.capitalize()
+                if job.leave_reason:
+                    desc += f" - {job.leave_reason}"
+            else:
+                desc = job.description or "-"
+
+            data.append({
+                "id": job.id,
+                "employee": emp.user.username,
+                "status": job.status,
+                "description": desc,
+                "job_no": job.job_no or "-",
+                "ship_name": job.ship_name or "-",
+                "location": job.location or "-",
+                "worked_on": ", ".join(worked_on) or "-",
+                "start_time": job.start_time or "-",
+                "end_time": job.end_time or "-",
+                "is_approved": job.is_approved,
+            })
+
+        return Response(data)
+
+    # ======================================================
+    # 🟩 MONTH-WISE REPORT
+    # ======================================================
+    year, month = map(int, month_str.split("-"))
+    start_date = date(year, month, 1)
+    end_date = date(year, month, calendar.monthrange(year, month)[1])
+
+    filters = {
+        "attendance__login_time__date__range": [start_date, end_date]
+    }
 
     if employee_id:
         filters["attendance__employee_id"] = employee_id
-
     if job_no:
         filters["job_no__icontains"] = job_no
 
@@ -722,43 +791,21 @@ def daywise_report(request):
     )
 
     for job in jobs:
-        employee = job.attendance.employee
-
-        # ❌ Skip — already covered by annual leave
-        if employee.id in annual_leave_employees:
-            continue
-
-        worked_on_list = []
-        if job.holiday_worked:
-            worked_on_list.append("Holiday Worked")
-        if job.off_station:
-            worked_on_list.append("Off Station")
-        if job.local_site:
-            worked_on_list.append("Local Site")
-        if job.driv:
-            worked_on_list.append("Driving")
-
-        if job.status == "leave":
-            status = "leave"
-            description = f"Reason: {job.leave_type}"
-            if job.leave_reason:
-                description += f" - {job.leave_reason}"
-        else:
-            status = "on_duty"
-            description = job.description or "-"
+        worked_on = []
+        if job.holiday_worked: worked_on.append("Holiday Worked")
+        if job.off_station: worked_on.append("Off Station")
+        if job.local_site: worked_on.append("Local Site")
+        if job.driv: worked_on.append("Driving")
 
         data.append({
-            "id": job.id,
-            "is_approved": job.is_approved,
-            "employee": employee.user.username,
-            "status": status,
-            "description": description,
+            "id": job.id,  # 🔥 ADD THIS
+            "date": job.attendance.login_time.date(),
+            "employee": job.attendance.employee.user.username,
+            "status": job.status,
+            "description": job.description or "-",
             "job_no": job.job_no or "-",
-            "ship_name": job.ship_name or "-",
-            "location": job.location or "-",
-            "worked_on": ", ".join(worked_on_list) or "-",
-            "start_time": job.start_time or "-",
-            "end_time": job.end_time or "-",
+            "worked_on": ", ".join(worked_on) or "-",
+            "is_approved": job.is_approved,
         })
 
     return Response(data)
@@ -779,8 +826,8 @@ def monthly_timesheet(request):
         d: {
             "date": d,
             "day": date(year, month, d).strftime("%A"),
-            "job_details": "",
-            "job_no": "",
+            "job_details": "-",
+            "job_no": "-",
             "holiday_worked": False,
             "off_station": False,
             "local_site": False,
@@ -798,37 +845,28 @@ def monthly_timesheet(request):
 
     for att in attendances:
         day = att.login_time.day
-
         for job in att.jobs.all():
-
-            # --- LEAVE ENTRY ---
             if job.status == "leave":
-                leave_text = f"Leave: {job.leave_type.capitalize()}"
-                if job.leave_reason:
-                    leave_text += f" - {job.leave_reason}"
-                data[day]["job_details"] = leave_text
+                data[day]["job_details"] = f"Leave: {job.leave_type}"
                 continue
-
-            # --- DUTY ENTRY (ACCUMULATE) ---
+            
             if job.description:
-                if data[day]["job_details"] and data[day]["job_details"] != "-":
-                    data[day]["job_details"] += ", "
-                data[day]["job_details"] += job.description
+                data[day]["job_details"] = job.description
 
             if job.job_no:
-                if data[day]["job_no"] and data[day]["job_no"] != "-":
-                    data[day]["job_no"] += ", "
-                data[day]["job_no"] += job.job_no
+                data[day]["job_no"] = job.job_no
 
             if job.holiday_worked:
                 data[day]["holiday_worked"] = True
+
             if job.off_station:
                 data[day]["off_station"] = True
+
             if job.local_site:
                 data[day]["local_site"] = True
+
             if job.driv:
                 data[day]["driv"] = True
-
 
 
     # 2️⃣ Inject annual leave
