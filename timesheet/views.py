@@ -13,11 +13,28 @@ from rest_framework.response import Response
 from django.db.models import Prefetch
 from collections import defaultdict
 from rest_framework.permissions import IsAuthenticated
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from rest_framework import serializers
 import calendar
 from django.db import transaction
 from .utils import is_employee_on_leave
+
+
+def auto_close_old_attendance(employee):
+    today = timezone.localdate()
+
+    Attendance.objects.filter(
+        employee=employee,
+        logout_time__isnull=True,
+        login_time__date__lt=today
+    ).update(
+        logout_time=timezone.make_aware(
+            datetime.combine(
+                today - timedelta(days=1),
+                datetime.max.time()
+            )
+        )
+    )
 
 # 🔹 Unified Login (admin + employee)
 class LoginView(APIView):
@@ -49,11 +66,17 @@ class LoginView(APIView):
             employee = user.employee
             category = employee.category
 
+            # ✅ AUTO-CLOSE PREVIOUS DAY ATTENDANCE
+            auto_close_old_attendance(employee)
+
             # ❌ Suspend check
             if employee.is_suspended:
-                return Response({'error': 'Your account is suspended'}, status=403)
+                return Response(
+                    {'error': 'Your account is suspended'},
+                    status=403
+                )
 
-           # ❌ BLOCK if today is inside ANY approved leave (annual / sick / etc)
+            # ❌ BLOCK if today is inside approved leave
             if LeaveRecord.objects.filter(
                 employee=employee,
                 start_date__lte=today,
@@ -64,19 +87,18 @@ class LoginView(APIView):
                     status=403
                 )
 
-            # 🔍 Check attendance (ONLY block AFTER logout)
+            # 🔍 Check today attendance
             attendance_today = Attendance.objects.filter(
                 employee=employee,
                 login_time__date=today
             ).last()
 
-            # ❌ Only block if logout_time exists (attendance completed)
+            # ❌ Block only if attendance is COMPLETED
             if attendance_today and attendance_today.logout_time is not None:
                 return Response(
-                    {"error": "You have already completed attendance today. Login not allowed."},
+                    {"error": "You have already completed attendance today."},
                     status=400
                 )
-
 
             role = "employee"
 
@@ -95,6 +117,7 @@ class LoginView(APIView):
             'category': category,
             'current_date': current_date
         })
+
     
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
