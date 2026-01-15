@@ -12,6 +12,9 @@ services:
       --workers 3
       --threads 2
       --timeout 60
+      --access-logfile -
+      --error-logfile -
+      --log-level info
     depends_on:
       - db
     volumes:
