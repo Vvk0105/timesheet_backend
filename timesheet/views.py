@@ -845,21 +845,27 @@ def monthly_timesheet(request):
 
     employee = Employee.objects.get(id=employee_id)
 
+    # ----------------------------------
+    # Initialize data for each day
+    # ----------------------------------
     data = {
         d: {
             "date": d,
             "day": date(year, month, d).strftime("%A"),
-            "job_details": "-",
-            "job_no": "-",
+            "job_details": "",
+            "job_no": "",
             "holiday_worked": False,
             "off_station": False,
             "local_site": False,
             "driv": False,
+            "is_approved": False,
         }
         for d in range(1, days_in_month + 1)
     }
 
+    # ----------------------------------
     # 1️⃣ Fill attendance jobs
+    # ----------------------------------
     attendances = Attendance.objects.filter(
         employee=employee,
         login_time__year=year,
@@ -868,16 +874,28 @@ def monthly_timesheet(request):
 
     for att in attendances:
         day = att.login_time.day
+
         for job in att.jobs.all():
+
+            # ---- LEAVE ENTRY ----
             if job.status == "leave":
-                data[day]["job_details"] = f"Leave: {job.leave_type}"
+                leave_text = f"Leave: {job.leave_type.capitalize()}"
+                if job.leave_reason:
+                    leave_text += f" - {job.leave_reason}"
+
+                data[day]["job_details"] = leave_text
                 continue
-            
+
+            # ---- DUTY ENTRY (ACCUMULATE) ----
             if job.description:
-                data[day]["job_details"] = job.description
+                if data[day]["job_details"] not in ("", "-"):
+                    data[day]["job_details"] += ", "
+                data[day]["job_details"] += job.description
 
             if job.job_no:
-                data[day]["job_no"] = job.job_no
+                if data[day]["job_no"] not in ("", "-"):
+                    data[day]["job_no"] += ", "
+                data[day]["job_no"] += job.job_no
 
             if job.holiday_worked:
                 data[day]["holiday_worked"] = True
@@ -890,9 +908,13 @@ def monthly_timesheet(request):
 
             if job.driv:
                 data[day]["driv"] = True
+            
+            if job.is_approved:
+                data[day]["is_approved"] = True
 
-
+    # ----------------------------------
     # 2️⃣ Inject annual leave
+    # ----------------------------------
     leaves = LeaveRecord.objects.filter(
         employee=employee,
         leave_type="annual",
@@ -907,13 +929,15 @@ def monthly_timesheet(request):
                 data[cur.day]["job_details"] = "Annual Leave"
             cur += timedelta(days=1)
 
+    # ----------------------------------
+    # Response
+    # ----------------------------------
     return Response({
         "employee": employee.user.username,
         "emp_no": employee.emp_no,
         "month": month_str,
         "data": list(data.values())
     })
-
 
 
 @api_view(["GET"])
