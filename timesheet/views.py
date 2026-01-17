@@ -115,6 +115,7 @@ class LoginView(APIView):
             'username': user.username,
             'role': role,
             'category': category,
+            'employee_id': user.employee.id if hasattr(user, 'employee') else None,
             'current_date': current_date
         })
 
