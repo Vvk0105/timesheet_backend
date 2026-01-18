@@ -248,7 +248,7 @@ class AttendanceLogoutView(APIView):
         ).last()
 
         if not attendance:
-            return Response({"error": "No active session found"}, status=400)
+            return Response({"error": "No active session found", "logged": False}, status=400)
 
         attendance.logout_time = timezone.now()
         attendance.logged = False
