@@ -31,6 +31,7 @@ class Attendance(models.Model):
     selected_time = models.TimeField(null=True, blank=True)
     logout_time = models.DateTimeField(null=True, blank=True)
     duration = models.DurationField(null=True, blank=True)
+    logged = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         # Calculate duration safely with timezone-aware datetimes

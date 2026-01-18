@@ -211,11 +211,14 @@ class AttendanceLoginView(APIView):
         existing = Attendance.objects.filter(employee=employee, login_time__date=today).last()
 
         if existing and existing.logout_time is None:
+            existing.logged = True
+            existing.save()
             # ✅ Resume ongoing session
             return Response({
                 "message": "Resuming your existing attendance session.",
                 "attendance_id": existing.id,
-                "selected_time": existing.selected_time
+                "selected_time": existing.selected_time,
+                "logged": existing.logged
             })
 
         if existing and existing.logout_time:
@@ -225,10 +228,11 @@ class AttendanceLoginView(APIView):
             )
 
         # ✅ Create new attendance
-        attendance = Attendance.objects.create(employee=employee, selected_time=selected_time)
+        attendance = Attendance.objects.create(employee=employee, selected_time=selected_time, logged=True)
         return Response({
             "message": "Login recorded successfully",
-            "attendance_id": attendance.id
+            "attendance_id": attendance.id,
+            "logged": attendance.logged
         })
 
 
@@ -247,12 +251,14 @@ class AttendanceLogoutView(APIView):
             return Response({"error": "No active session found"}, status=400)
 
         attendance.logout_time = timezone.now()
+        attendance.logged = False
         attendance.save()  # Triggers duration calculation
         attendance.refresh_from_db()  # ✅ Ensure updated duration is loaded
 
         return Response({
             "message": "Logout recorded successfully",
             "logout_time": attendance.logout_time,
+            "logged": attendance.logged,
             "duration": str(attendance.duration) if attendance.duration else "0:00:00"
         })
 
