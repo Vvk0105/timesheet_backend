@@ -828,13 +828,15 @@ def work_reports(request):
         if job.driv: worked_on.append("Driving")
 
         data.append({
-            "id": job.id,  # 🔥 ADD THIS
+            "id": job.id,
             "date": job.attendance.login_time.date(),
             "employee": job.attendance.employee.user.username,
             "status": job.status,
             "description": job.description or "-",
             "job_no": job.job_no or "-",
             "worked_on": ", ".join(worked_on) or "-",
+            "start_time": job.start_time or "-",
+            "end_time": job.end_time or "-",
             "is_approved": job.is_approved,
         })
 
