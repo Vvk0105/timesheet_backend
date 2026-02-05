@@ -786,6 +786,7 @@ def work_reports(request):
 
             data.append({
                 "id": job.id,
+                "date": job.attendance.login_time.date(),
                 "employee": emp.user.username,
                 "status": job.status,
                 "description": desc,
