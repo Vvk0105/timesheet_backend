@@ -743,6 +743,8 @@ def work_reports(request):
                 desc += f" - {leave.reason}"
 
             data.append({
+                "id": leave.id,
+                "date": f"{leave.start_date}-{leave.end_date}",
                 "employee": leave.employee.user.username,
                 "status": "leave",
                 "description": desc,
