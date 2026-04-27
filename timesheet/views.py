@@ -845,111 +845,166 @@ def work_reports(request):
 
     return Response(data)
 
-from datetime import timedelta
+import calendar
+import logging
+import traceback
+from datetime import date, timedelta
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+logger = logging.getLogger(__name__)
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def monthly_timesheet(request):
-    employee_id = request.GET.get("employee")
-    month_str = request.GET.get("month")
+    try:
+        logger.info("monthly_timesheet started")
 
-    year, month = map(int, month_str.split("-"))
-    days_in_month = calendar.monthrange(year, month)[1]
+        employee_id = request.GET.get("employee")
+        month_str = request.GET.get("month")
 
-    employee = Employee.objects.get(id=employee_id)
+        logger.info(f"params -> employee={employee_id}, month={month_str}")
 
-    # ----------------------------------
-    # Initialize data for each day
-    # ----------------------------------
-    data = {
-        d: {
-            "date": d,
-            "day": date(year, month, d).strftime("%A"),
-            "job_details": "",
-            "job_no": "",
-            "holiday_worked": False,
-            "off_station": False,
-            "local_site": False,
-            "driv": False,
-            "is_approved": False,
+        if not employee_id or not month_str:
+            return Response(
+                {"error": "employee and month are required"},
+                status=400
+            )
+
+        year, month = map(int, month_str.split("-"))
+        days_in_month = calendar.monthrange(year, month)[1]
+
+        logger.info(f"parsed year={year}, month={month}")
+
+        employee = Employee.objects.get(id=employee_id)
+
+        logger.info(f"employee loaded -> {employee.id}")
+
+        # ----------------------------------
+        # Initialize data for each day
+        # ----------------------------------
+        data = {
+            d: {
+                "date": d,
+                "day": date(year, month, d).strftime("%A"),
+                "job_details": "",
+                "job_no": "",
+                "holiday_worked": False,
+                "off_station": False,
+                "local_site": False,
+                "driv": False,
+                "is_approved": False,
+            }
+            for d in range(1, days_in_month + 1)
         }
-        for d in range(1, days_in_month + 1)
-    }
 
-    # ----------------------------------
-    # 1️⃣ Fill attendance jobs
-    # ----------------------------------
-    attendances = Attendance.objects.filter(
-        employee=employee,
-        login_time__year=year,
-        login_time__month=month
-    ).prefetch_related("jobs")
+        logger.info("daily structure initialized")
 
-    for att in attendances:
-        day = att.login_time.day
+        # ----------------------------------
+        # Fill attendance jobs
+        # ----------------------------------
+        attendances = Attendance.objects.filter(
+            employee=employee,
+            login_time__year=year,
+            login_time__month=month
+        ).prefetch_related("jobs")
 
-        for job in att.jobs.all():
+        logger.info(f"attendance count = {attendances.count()}")
 
-            # ---- LEAVE ENTRY ----
-            if job.status == "leave":
-                leave_text = f"Leave: {job.leave_type.capitalize()}"
-                if job.leave_reason:
-                    leave_text += f" - {job.leave_reason}"
+        for att in attendances:
+            logger.info(f"processing attendance id={att.id}")
 
-                data[day]["job_details"] = leave_text
-                continue
+            day = att.login_time.day
 
-            # ---- DUTY ENTRY (ACCUMULATE) ----
-            if job.description:
-                if data[day]["job_details"] not in ("", "-"):
-                    data[day]["job_details"] += ", "
-                data[day]["job_details"] += job.description
+            for job in att.jobs.all():
+                logger.info(f"processing job id={job.id}")
 
-            if job.job_no:
-                if data[day]["job_no"] not in ("", "-"):
-                    data[day]["job_no"] += ", "
-                data[day]["job_no"] += job.job_no
+                # Leave entry
+                if job.status == "leave":
+                    leave_text = f"Leave: {job.leave_type.capitalize()}"
 
-            if job.holiday_worked:
-                data[day]["holiday_worked"] = True
+                    if job.leave_reason:
+                        leave_text += f" - {job.leave_reason}"
 
-            if job.off_station:
-                data[day]["off_station"] = True
+                    data[day]["job_details"] = leave_text
+                    continue
 
-            if job.local_site:
-                data[day]["local_site"] = True
+                # Duty entry
+                if job.description:
+                    if data[day]["job_details"] not in ("", "-"):
+                        data[day]["job_details"] += ", "
+                    data[day]["job_details"] += job.description
 
-            if job.driv:
-                data[day]["driv"] = True
-            
-            if job.is_approved:
-                data[day]["is_approved"] = True
+                if job.job_no:
+                    if data[day]["job_no"] not in ("", "-"):
+                        data[day]["job_no"] += ", "
+                    data[day]["job_no"] += job.job_no
 
-    # ----------------------------------
-    # 2️⃣ Inject annual leave
-    # ----------------------------------
-    leaves = LeaveRecord.objects.filter(
-        employee=employee,
-        leave_type="annual",
-        start_date__year__lte=year,
-        end_date__year__gte=year
-    )
+                if job.holiday_worked:
+                    data[day]["holiday_worked"] = True
 
-    for leave in leaves:
-        cur = leave.start_date
-        while cur <= leave.end_date:
-            if cur.month == month:
-                data[cur.day]["job_details"] = "Annual Leave"
-            cur += timedelta(days=1)
+                if job.off_station:
+                    data[day]["off_station"] = True
 
-    # ----------------------------------
-    # Response
-    # ----------------------------------
-    return Response({
-        "employee": employee.user.username,
-        "emp_no": employee.emp_no,
-        "month": month_str,
-        "data": list(data.values())
-    })
+                if job.local_site:
+                    data[day]["local_site"] = True
+
+                if job.driv:
+                    data[day]["driv"] = True
+
+                if job.is_approved:
+                    data[day]["is_approved"] = True
+
+        logger.info("attendance section completed")
+
+        # ----------------------------------
+        # Inject annual leave
+        # ----------------------------------
+        leaves = LeaveRecord.objects.filter(
+            employee=employee,
+            leave_type="annual",
+            start_date__year__lte=year,
+            end_date__year__gte=year
+        )
+
+        logger.info(f"leave count = {leaves.count()}")
+
+        for leave in leaves:
+            logger.info(f"processing leave id={leave.id}")
+
+            cur = leave.start_date
+
+            while cur <= leave.end_date:
+                if cur.month == month:
+                    data[cur.day]["job_details"] = "Annual Leave"
+
+                cur += timedelta(days=1)
+
+        logger.info("leave section completed")
+
+        response_data = {
+            "employee": employee.user.username,
+            "emp_no": employee.emp_no,
+            "month": month_str,
+            "data": list(data.values())
+        }
+
+        logger.info("monthly_timesheet success")
+
+        return Response(response_data)
+
+    except Exception as e:
+        logger.exception("monthly_timesheet failed")
+        return Response(
+            {
+                "error": str(e),
+                "type": e.__class__.__name__
+            },
+            status=500
+        )
 
 
 @api_view(["GET"])
