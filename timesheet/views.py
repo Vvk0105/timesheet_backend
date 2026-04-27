@@ -635,11 +635,13 @@ class EmployeeTimeSheetView(APIView):
         })
 
         for attendance in attendances:
-            date_str = str(attendance.login_time.date())
+            local_login = timezone.localtime(attendance.login_time)
+            local_date = local_login.date()
+            date_str = str(local_date)
             group = grouped_data[date_str]
 
-            group["date"] = attendance.login_time.date()
-            group["day"] = attendance.login_time.strftime("%A")
+            group["date"] = local_date
+            group["day"] = local_login.strftime("%A")
             group["duration"] = str(attendance.duration) if attendance.duration else None
 
             for job in attendance.jobs.all():
@@ -788,7 +790,7 @@ def work_reports(request):
 
             data.append({
                 "id": job.id,
-                "date": job.attendance.login_time.date(),
+                "date": timezone.localtime(job.attendance.login_time).date(),
                 "employee": emp.user.username,
                 "status": job.status,
                 "description": desc,
@@ -832,7 +834,7 @@ def work_reports(request):
 
         data.append({
             "id": job.id,
-            "date": job.attendance.login_time.date(),
+            "date": timezone.localtime(job.attendance.login_time).date(),
             "employee": job.attendance.employee.user.username,
             "status": job.status,
             "description": job.description or "-",
@@ -917,7 +919,15 @@ def monthly_timesheet(request):
         for att in attendances:
             logger.info(f"processing attendance id={att.id}")
 
-            day = att.login_time.day
+            local_login_date = timezone.localtime(att.login_time).date()
+            if local_login_date.month != month:
+                logger.warning(f"Attendance {att.id} month ({local_login_date.month}) doesn't match requested month {month}")
+                continue
+
+            day = local_login_date.day
+            if day not in data:
+                logger.warning(f"Day {day} not in month data, skipping attendance {att.id}")
+                continue
 
             for job in att.jobs.all():
                 logger.info(f"processing job id={job.id}")
